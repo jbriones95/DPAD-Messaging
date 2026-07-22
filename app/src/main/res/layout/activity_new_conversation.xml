@@ -4,6 +4,7 @@
 
     D-Pad flow:
       Toolbar (Back) → DOWN → et_recipient
+      et_recipient   → LEFT → btn_add_recipient
       et_recipient   → DOWN → btn_send
       btn_send       → UP   → et_recipient
       et_recipient   → UP   → Toolbar
@@ -88,6 +89,25 @@
             android:textColor="@color/conversationDate"
             android:textSize="@dimen/text_size_normal" />
 
+        <TextView
+            android:id="@+id/btn_add_recipient"
+            android:layout_width="@dimen/compose_button_size"
+            android:layout_height="@dimen/compose_button_size"
+            android:layout_marginStart="@dimen/padding_small"
+            android:layout_marginEnd="@dimen/padding_small"
+            android:background="@drawable/button_focusable_bg"
+            android:contentDescription="@string/add_recipient"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:gravity="center"
+            android:nextFocusUp="@id/btn_back"
+            android:nextFocusDown="@id/btn_send"
+            android:nextFocusRight="@id/et_recipient"
+            android:text="@string/schedule_step_increment"
+            android:textColor="@color/colorOnBackground"
+            android:textSize="@dimen/text_size_title"
+            android:textStyle="bold" />
+
         <EditText
             android:id="@+id/et_recipient"
             android:layout_width="0dp"
@@ -100,29 +120,13 @@
             android:imeOptions="actionDone"
             android:inputType="textNoSuggestions"
             android:maxLines="1"
+            android:nextFocusLeft="@id/btn_add_recipient"
             android:nextFocusDown="@id/btn_send"
             android:nextFocusUp="@id/btn_back"
             android:singleLine="true"
             android:textColor="@color/colorOnBackground"
             android:textColorHint="@color/composeHint"
             android:textSize="@dimen/text_size_normal" />
-
-            <TextView
-                android:id="@+id/btn_add_recipient"
-                android:layout_width="@dimen/compose_button_size"
-                android:layout_height="@dimen/compose_button_size"
-                android:layout_marginStart="@dimen/padding_small"
-                android:background="@drawable/button_focusable_bg"
-                android:contentDescription="@string/add_recipient"
-                android:focusable="true"
-                android:focusableInTouchMode="true"
-                android:gravity="center"
-                android:nextFocusUp="@id/btn_back"
-                android:nextFocusDown="@id/btn_send"
-                android:text="@string/schedule_step_increment"
-                android:textColor="@color/colorOnBackground"
-                android:textSize="@dimen/text_size_title"
-                android:textStyle="bold" />
 
     </LinearLayout>
 

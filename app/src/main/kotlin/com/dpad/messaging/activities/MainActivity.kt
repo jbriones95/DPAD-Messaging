@@ -5,6 +5,7 @@ import android.app.role.RoleManager
 import android.content.res.ColorStateList
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Telephony
@@ -30,6 +31,7 @@ import com.dpad.messaging.helpers.ConversationCache
 import com.dpad.messaging.extensions.markThreadAsReadInTelephony
 import com.dpad.messaging.helpers.Prefs
 import com.dpad.messaging.helpers.ThemeManager
+import com.dpad.messaging.models.Draft
 import com.dpad.messaging.models.Conversation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -95,6 +97,13 @@ class MainActivity : BaseActivity() {
         setupToolbar()
         setupSearch()
         checkPermissions()
+        handleExternalComposeIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleExternalComposeIntent(intent)
     }
 
     override fun onResume() {
@@ -323,6 +332,117 @@ class MainActivity : BaseActivity() {
             }
         }
         startActivity(intent)
+    }
+
+    private fun handleExternalComposeIntent(incomingIntent: Intent?): Boolean {
+        val intent = incomingIntent ?: return false
+        val action = intent.action ?: return false
+        if (action != Intent.ACTION_SENDTO && action != Intent.ACTION_VIEW) return false
+
+        val data = intent.data ?: return false
+        val scheme = data.scheme?.lowercase() ?: return false
+        if (scheme !in setOf("sms", "smsto", "mms", "mmsto")) return false
+
+        val prefillBody = extractComposeBodyFromIntent(data, intent)
+        val recipients = extractRecipientsFromIntent(data, intent)
+        if (recipients.isEmpty()) {
+            openNewConversation(prefillBody = prefillBody)
+            return true
+        }
+
+        lifecycleScope.launch {
+            val threadId = withContext(Dispatchers.IO) {
+                resolveOrCreateThreadId(recipients)
+            }
+
+            if (threadId == null) {
+                openNewConversation(recipients, prefillBody)
+                return@launch
+            }
+
+            if (prefillBody.isNotBlank()) {
+                withContext(Dispatchers.IO) {
+                    App.get().database.draftsDao().insertDraft(
+                        Draft(threadId = threadId, body = prefillBody)
+                    )
+                }
+            }
+
+            val title = recipients.joinToString(", ") {
+                App.get().contactHelper.getDisplayName(it)
+            }
+
+            val threadIntent = Intent(this@MainActivity, ThreadActivity::class.java).apply {
+                putExtra(ThreadActivity.EXTRA_THREAD_ID, threadId)
+                putExtra(ThreadActivity.EXTRA_THREAD_TITLE, title)
+                putExtra(ThreadActivity.EXTRA_PHONE_NUMBER, recipients.first())
+                if (recipients.size > 1) {
+                    putExtra(ThreadActivity.EXTRA_PARTICIPANTS, recipients.joinToString(","))
+                }
+            }
+            startActivity(threadIntent)
+            finish()
+        }
+        return true
+    }
+
+    private fun extractRecipientsFromIntent(data: Uri, intent: Intent): List<String> {
+        val rawFromUri = data.schemeSpecificPart
+            ?.removePrefix("//")
+            ?.substringBefore('?')
+            ?.trim()
+            .orEmpty()
+
+        val rawRecipients = if (rawFromUri.isNotBlank()) {
+            rawFromUri
+        } else {
+            intent.getStringExtra("address").orEmpty()
+        }
+
+        if (rawRecipients.isBlank()) return emptyList()
+
+        return rawRecipients
+            .split(',', ';')
+            .map { Uri.decode(it).trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+    }
+
+    private fun extractComposeBodyFromIntent(data: Uri, intent: Intent): String {
+        val extraBody = intent.getStringExtra("sms_body")
+            ?.takeIf { it.isNotBlank() }
+            ?: intent.getStringExtra(Intent.EXTRA_TEXT)?.takeIf { it.isNotBlank() }
+        if (!extraBody.isNullOrBlank()) return extraBody
+        return data.getQueryParameter("body")?.trim().orEmpty()
+    }
+
+    private fun openNewConversation(
+        recipients: List<String> = emptyList(),
+        prefillBody: String = ""
+    ) {
+        val intent = Intent(this, NewConversationActivity::class.java).apply {
+            if (prefillBody.isNotBlank()) {
+                putExtra(NewConversationActivity.EXTRA_PREFILL_BODY, prefillBody)
+            }
+            if (recipients.isNotEmpty()) {
+                putStringArrayListExtra(
+                    NewConversationActivity.EXTRA_PREFILL_RECIPIENTS,
+                    ArrayList(recipients)
+                )
+            }
+        }
+        startActivity(intent)
+        finish()
+    }
+
+    private fun resolveOrCreateThreadId(recipients: List<String>): Long? {
+        return runCatching {
+            if (recipients.size == 1) {
+                Telephony.Threads.getOrCreateThreadId(this, recipients.first())
+            } else {
+                Telephony.Threads.getOrCreateThreadId(this, recipients.toSet())
+            }
+        }.getOrNull()
     }
 
     private fun currentFocusedThreadId(): Long? {

@@ -438,6 +438,13 @@ class NewConversationActivity : BaseActivity() {
     // Handles share/forward intents. Body and attachment are carried into the opened thread.
     private fun handleIncomingIntent(intent: Intent?) {
         if (intent == null) return
+
+        val prefillRecipients = intent.getStringArrayListExtra(EXTRA_PREFILL_RECIPIENTS)
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
+            .orEmpty()
+        prefillRecipients.forEach { addRecipient(it) }
+
         when (intent.action) {
             Intent.ACTION_SEND -> {
                 val text = intent.getStringExtra(Intent.EXTRA_TEXT)
@@ -489,5 +496,6 @@ class NewConversationActivity : BaseActivity() {
 
     companion object {
         const val EXTRA_PREFILL_BODY = "extra_prefill_body"
+        const val EXTRA_PREFILL_RECIPIENTS = "extra_prefill_recipients"
     }
 }
