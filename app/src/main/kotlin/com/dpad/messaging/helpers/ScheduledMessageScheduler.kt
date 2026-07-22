@@ -70,6 +70,17 @@ object ScheduledMessageScheduler {
         }
     }
 
+    fun cancelMessage(context: Context, messageId: Long): Boolean {
+        if (messageId <= 0L) return false
+        val alarmManager = context.getSystemService(AlarmManager::class.java) ?: return false
+        return try {
+            alarmManager.cancel(scheduledMessagePendingIntent(context, messageId))
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     suspend fun scheduleAndPersistStatus(
         context: Context,
         message: Message,
@@ -131,7 +142,7 @@ object ScheduledMessageScheduler {
             .notify(80_002, notification)
     }
 
-    private fun scheduledMessagePendingIntent(context: Context, messageId: Long): PendingIntent {
+    internal fun scheduledMessagePendingIntent(context: Context, messageId: Long): PendingIntent {
         val requestCode = (messageId and 0x7FFFFFFF).toInt()
         val intent = Intent(context, ScheduledMessageReceiver::class.java).apply {
             putExtra(ScheduledMessageReceiver.EXTRA_SCHEDULED_MESSAGE_ID, messageId)

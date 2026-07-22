@@ -248,6 +248,11 @@ class ThreadAdapter(
                 binding.ivAttachment.setOnClickListener(null)
                 binding.bubbleContainer.setOnClickListener(null)
             }
+
+            binding.bubbleContainer.setOnLongClickListener {
+                onMessageLongClick(message)
+                true
+            }
         }
     }
 

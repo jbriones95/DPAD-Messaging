@@ -2,6 +2,7 @@ package com.dpad.messaging.activities
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.ContentUris
@@ -41,6 +42,7 @@ import com.dpad.messaging.helpers.MessageCache
 import com.dpad.messaging.helpers.MmsSender
 import com.dpad.messaging.helpers.NotificationHelper
 import com.dpad.messaging.helpers.Prefs
+import com.dpad.messaging.helpers.ScheduledMessageScheduler
 import com.dpad.messaging.helpers.SendingMode
 import com.dpad.messaging.helpers.SendingRouter
 import com.dpad.messaging.helpers.ThemeManager
@@ -87,7 +89,7 @@ class ThreadActivity : BaseActivity() {
     private var pendingCameraUri: Uri? = null
     private var pendingScheduledAtMillis: Long? = null
 
-    private lateinit var attachmentPickerLauncher: ActivityResultLauncher<Array<String>>
+    private lateinit var attachmentPickerLauncher: ActivityResultLauncher<Intent>
     private lateinit var permissionRequestLauncher: ActivityResultLauncher<Array<String>>
     private lateinit var contactPickerLauncher: ActivityResultLauncher<Void?>
     private lateinit var cameraCaptureLauncher: ActivityResultLauncher<Uri>
@@ -111,8 +113,7 @@ class ThreadActivity : BaseActivity() {
         ) { result ->
             val granted = result.values.all { it }
             if (granted) {
-                // Launch picker after permission granted
-                attachmentPickerLauncher.launch(arrayOf("image/*", "audio/*"))
+                launchAttachmentPickerChooser()
             } else {
                 android.widget.Toast.makeText(this, R.string.permission_denied, android.widget.Toast.LENGTH_SHORT).show()
             }
@@ -120,8 +121,9 @@ class ThreadActivity : BaseActivity() {
 
         // Register before setupComposeBar() (must be called before onStart)
         attachmentPickerLauncher = registerForActivityResult(
-            ActivityResultContracts.OpenDocument()
-        ) { uri ->
+            ActivityResultContracts.StartActivityForResult()
+        ) { result ->
+            val uri = if (result.resultCode == Activity.RESULT_OK) result.data?.data else null
             if (uri != null) {
                 try {
                     contentResolver.takePersistableUriPermission(
@@ -413,7 +415,7 @@ class ThreadActivity : BaseActivity() {
                         } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
                             permissionRequestLauncher.launch(arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE))
                         } else {
-                            attachmentPickerLauncher.launch(arrayOf("image/*", "audio/*"))
+                            launchAttachmentPickerChooser()
                         }
                     }
                     2 -> contactPickerLauncher.launch(null)
@@ -477,6 +479,39 @@ class ThreadActivity : BaseActivity() {
             binding.ivAttachmentPreview.setImageResource(R.drawable.ic_attach)
             updateSendButtonState()
         }
+    }
+
+    private fun launchAttachmentPickerChooser() {
+        val mimeTypes = arrayOf("image/*", "audio/*")
+
+        val openDocumentIntent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        }
+
+        val imageIntent = Intent(Intent.ACTION_GET_CONTENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "image/*"
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+
+        val audioIntent = Intent(Intent.ACTION_GET_CONTENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "audio/*"
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+
+        val chooser = Intent.createChooser(
+            openDocumentIntent,
+            getString(R.string.choose_attachment_app)
+        ).apply {
+            putExtra(Intent.EXTRA_INITIAL_INTENTS, arrayOf(imageIntent, audioIntent))
+        }
+
+        attachmentPickerLauncher.launch(chooser)
     }
 
     private fun clearAttachment() {
@@ -1086,6 +1121,9 @@ class ThreadActivity : BaseActivity() {
         val options = buildList {
             add(getString(R.string.copy_text))
             if (!message.isIncoming) {
+                if (message.isScheduled && message.type == Message.TYPE_QUEUED) {
+                    add(getString(R.string.cancel_scheduled_message))
+                }
                 if (message.type == Message.TYPE_FAILED) add(getString(R.string.retry_send))
             }
             add(getString(R.string.forward))
@@ -1096,6 +1134,7 @@ class ThreadActivity : BaseActivity() {
             .setItems(options) { _, which ->
                 when (options[which]) {
                     getString(R.string.copy_text) -> copyMessageText(message.body)
+                    getString(R.string.cancel_scheduled_message) -> cancelScheduledMessage(message)
                     getString(R.string.retry_send) -> retryMessage(message)
                     getString(R.string.forward) -> forwardMessage(message)
                     getString(R.string.move_to_recycle_bin) -> deleteMessage(message)
@@ -1120,6 +1159,15 @@ class ThreadActivity : BaseActivity() {
 
     private fun deleteMessage(message: Message) {
         lifecycleScope.launch(Dispatchers.IO) {
+            if (message.isScheduled && message.type == Message.TYPE_QUEUED) {
+                ScheduledMessageScheduler.cancelMessage(this@ThreadActivity, message.id)
+                App.get().database.messagesDao().deleteMessage(message.id)
+                EventBus.getDefault().post(RefreshMessages(threadId))
+                EventBus.getDefault().post(com.dpad.messaging.events.RefreshConversations())
+                withContext(Dispatchers.Main) { loadMessages() }
+                return@launch
+            }
+
             if (Prefs.get().recycleBinEnabled) {
                 App.get().database.messagesDao()
                     .insertRecycleBinMessage(RecycleBinMessage(id = message.id))
@@ -1135,6 +1183,23 @@ class ThreadActivity : BaseActivity() {
                 }
             }
             withContext(Dispatchers.Main) { loadMessages() }
+        }
+    }
+
+    private fun cancelScheduledMessage(message: Message) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            ScheduledMessageScheduler.cancelMessage(this@ThreadActivity, message.id)
+            App.get().database.messagesDao().deleteMessage(message.id)
+            EventBus.getDefault().post(RefreshMessages(threadId))
+            EventBus.getDefault().post(com.dpad.messaging.events.RefreshConversations())
+            withContext(Dispatchers.Main) {
+                android.widget.Toast.makeText(
+                    this@ThreadActivity,
+                    R.string.scheduled_message_canceled,
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+                loadMessages()
+            }
         }
     }
 

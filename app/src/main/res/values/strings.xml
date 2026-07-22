@@ -63,6 +63,7 @@
     <string name="copy_text">Copy Text</string>
     <string name="select_text">Select Text</string>
     <string name="retry_send">Retry Send</string>
+    <string name="cancel_scheduled_message">Cancel Scheduled Message</string>
     <string name="reply">Reply</string>
 
     <!-- ─── Conversation Details ─── -->
@@ -209,6 +210,8 @@
     <string name="image_viewer_content_description">Image viewer</string>
     <string name="image_viewer_zoom_default">100%%</string>
     <string name="tap_to_remove_number">Tap to remove number: %s</string>
+    <string name="choose_attachment_app">Choose app</string>
+    <string name="scheduled_message_canceled">Scheduled message canceled</string>
 
     <!-- Schedule picker labels -->
     <string name="schedule_year">Year</string>
