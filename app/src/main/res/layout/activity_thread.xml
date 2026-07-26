@@ -215,7 +215,7 @@
             android:textColorHint="@color/composeHint"
             android:textSize="@dimen/text_size_normal"
             android:nextFocusLeft="@id/btn_attach"
-            android:nextFocusRight="@id/btn_send"
+            android:nextFocusRight="@id/btn_schedule"
             android:nextFocusUp="@id/btn_remove_attachment" />
 
         <!-- Character counter (shown when enabled in settings) -->
