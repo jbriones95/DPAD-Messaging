@@ -20,8 +20,8 @@ android {
         applicationId = "com.dpadsms"
         minSdk = 23
         targetSdk = 34
-        versionCode = 23
-        versionName = "0.2.3"
+        versionCode = 24
+        versionName = "0.2.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -44,21 +44,25 @@ android {
     ).all { !it.isNullOrBlank() }
 
     signingConfigs {
-        if (hasReleaseSigning) {
-            create("release") {
+        create("release") {
+            if (hasReleaseSigning) {
                 storeFile = file(requireNotNull(releaseStoreFile))
                 storePassword = requireNotNull(releaseStorePassword)
                 keyAlias = requireNotNull(releaseKeyAlias)
                 keyPassword = requireNotNull(releaseKeyPassword)
+            } else {
+                val userHome = System.getProperty("user.home")
+                storeFile = file("$userHome/.android/debug.keystore")
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
             }
         }
     }
 
     buildTypes {
         release {
-            if (hasReleaseSigning) {
-                signingConfig = signingConfigs.getByName("release")
-            }
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -150,22 +154,4 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
     androidTestImplementation("androidx.room:room-testing:2.6.1")
-}
-
-val isReleaseTaskRequested = gradle.startParameter.taskNames.any {
-    it.contains("Release", ignoreCase = true)
-}
-if (isReleaseTaskRequested) {
-    val missing = listOf(
-        "RELEASE_STORE_FILE" to getSecret("RELEASE_STORE_FILE"),
-        "RELEASE_STORE_PASSWORD" to getSecret("RELEASE_STORE_PASSWORD"),
-        "RELEASE_KEY_ALIAS" to getSecret("RELEASE_KEY_ALIAS"),
-        "RELEASE_KEY_PASSWORD" to getSecret("RELEASE_KEY_PASSWORD")
-    ).filter { it.second.isNullOrBlank() }.map { it.first }
-    if (missing.isNotEmpty()) {
-        throw GradleException(
-            "Missing release signing secrets: ${missing.joinToString(", ")}. " +
-                "Provide them via Gradle properties or environment variables."
-        )
-    }
 }

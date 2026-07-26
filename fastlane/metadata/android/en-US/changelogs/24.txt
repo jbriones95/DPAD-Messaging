@@ -1,0 +1,2 @@
+- Fix: D-pad can now navigate to schedule and send buttons from message text field
+- Fix: UP from compose bar now goes directly to toolbar (no more scrolling through all messages)
