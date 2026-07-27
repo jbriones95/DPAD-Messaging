@@ -173,7 +173,7 @@ object MmsSender {
         // Send via mmslib — pass threadId so message lands in the correct thread
         try {
             if (BuildConfig.DEBUG) Log.d(TAG, "MmsSender: sending via mmslib recipients=$recipients group=${recipients.size > 1} subId=$subscriptionId threadId=$threadId")
-            transaction.sendNewMessage(message, threadId)
+            transaction.sendNewMessage(message)
             if (BuildConfig.DEBUG) Log.d(TAG, "MmsSender: sent successfully")
         } catch (e: Exception) {
             if (BuildConfig.DEBUG) Log.e(TAG, "MmsSender: send failed", e)

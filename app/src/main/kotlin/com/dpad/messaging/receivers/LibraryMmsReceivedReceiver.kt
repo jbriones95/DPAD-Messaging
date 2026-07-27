@@ -10,11 +10,14 @@ import com.dpad.messaging.App
 import com.dpad.messaging.BuildConfig
 import com.dpad.messaging.events.RefreshConversations
 import com.dpad.messaging.events.RefreshMessages
+import com.dpad.messaging.helpers.AppCoroutineScopes
 import com.dpad.messaging.helpers.MmsHelper
 import com.dpad.messaging.helpers.NotificationHelper
-import com.dpad.messaging.helpers.Prefs
 import com.dpad.messaging.helpers.SmsWhitelistManager
 import com.klinker.android.send_message.MmsReceivedReceiver
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.greenrobot.eventbus.EventBus
 
 /**
@@ -44,8 +47,14 @@ class LibraryMmsReceivedReceiver : MmsReceivedReceiver() {
         }
 
         val body = MmsHelper.getMmsDisplayBody(context, msgId, subject)
-        val blockedNumbers = App.get().database.blockedNumbersDao().getAll()
-        val blockedKeywords = App.get().database.blockedKeywordsDao().getAll()
+
+        // Room DAO calls are suspend — run on IO dispatcher
+        val blockedNumbers = runBlocking(Dispatchers.IO) {
+            App.get().database.blockedNumbersDao().getAll()
+        }
+        val blockedKeywords = runBlocking(Dispatchers.IO) {
+            App.get().database.blockedKeywordsDao().getAll()
+        }
 
         val fromDigits = from.filter { it.isDigit() }
         val isBlockedByNumber = blockedNumbers.any { bn ->
@@ -74,21 +83,6 @@ class LibraryMmsReceivedReceiver : MmsReceivedReceiver() {
     override fun onError(context: Context, error: String) {
         Log.e(TAG, "LibraryMmsReceivedReceiver error: $error")
         EventBus.getDefault().post(RefreshConversations())
-    }
-
-    override fun getMmscInfoForReceptionAck(): MmscInformation? {
-        val prefs = Prefs.get()
-        val mmsc = queryPreferredApnValue(Telephony.Carriers.MMSC).ifBlank { "" }
-        if (mmsc.isBlank()) {
-            return null
-        }
-
-        val proxy = queryPreferredApnValue(Telephony.Carriers.MMSPROXY).ifBlank { prefs.mmsProxyHost }
-        val proxyPort = queryPreferredApnValue(Telephony.Carriers.MMSPORT).toIntOrNull()
-            ?: prefs.mmsProxyPort.takeIf { it > 0 }
-            ?: 80
-
-        return MmscInformation(mmsc, proxy, proxyPort)
     }
 
     private fun queryPreferredApnValue(column: String): String {
