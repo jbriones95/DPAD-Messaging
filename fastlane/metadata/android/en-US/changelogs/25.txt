@@ -1,0 +1,1 @@
+- Fix: D-pad right/left in text field now navigates to schedule/attach buttons instead of inserting spaces (XT9 keyboard issue)

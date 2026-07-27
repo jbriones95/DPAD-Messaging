@@ -317,14 +317,12 @@ class ThreadActivity : BaseActivity() {
             }
         }
         binding.etMessage.setOnKeyListener { _, keyCode, event ->
-            when {
-                keyCode == KeyEvent.KEYCODE_DPAD_UP && event.action == KeyEvent.ACTION_DOWN -> {
-                    goUpFromCompose(); true
-                }
-                // DPAD CENTER: extract numbers and create chips
-                keyCode == KeyEvent.KEYCODE_DPAD_CENTER && event.action == KeyEvent.ACTION_DOWN -> {
-                    createNumberChip(); true
-                }
+            if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+            when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_UP    -> { goUpFromCompose(); true }
+                KeyEvent.KEYCODE_DPAD_RIGHT -> { binding.btnSchedule.requestFocus(); true }
+                KeyEvent.KEYCODE_DPAD_LEFT  -> { binding.btnAttach.requestFocus(); true }
+                KeyEvent.KEYCODE_DPAD_CENTER -> { createNumberChip(); true }
                 else -> false
             }
         }
