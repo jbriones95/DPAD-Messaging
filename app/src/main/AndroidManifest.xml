@@ -253,6 +253,12 @@
             android:name=".receivers.MmsSentReceiver"
             android:exported="false" />
 
+        <!-- Klinker DownloadManager callback target (routed via taskAffinity). -->
+        <receiver
+            android:name=".receivers.LibraryMmsReceivedReceiver"
+            android:exported="false"
+            android:taskAffinity="com.klinker.android.messaging.MMS_RECEIVED" />
+
         <receiver
             android:name=".receivers.MmsDownloadReceiver"
             android:exported="false">

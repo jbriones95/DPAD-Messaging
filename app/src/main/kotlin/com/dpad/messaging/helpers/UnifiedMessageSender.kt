@@ -258,7 +258,7 @@ object LibraryUnifiedMessageSender : UnifiedMessageSender {
 
         try {
             Log.d(TAG, "LibraryUnifiedMessageSender: SMS via mmslib phone=$phoneNumber threadId=$threadId subId=$subscriptionId")
-            transaction.sendNewMessage(message)
+            transaction.sendNewMessage(message, threadId)
         } catch (e: Exception) {
             Log.e(TAG, "LibraryUnifiedMessageSender: SMS library send failed, falling back to legacy", e)
             // SmsSender.send() contains the authoritative MDM filter check.

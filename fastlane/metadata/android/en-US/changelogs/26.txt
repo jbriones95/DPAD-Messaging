@@ -1,0 +1,3 @@
+- Fix: MMS now passes threadId correctly so messages land in the right conversation
+- Fix: SMS via library sender now passes threadId correctly
+- Fix: Multiple attachments are now combined into a single MMS instead of separate messages

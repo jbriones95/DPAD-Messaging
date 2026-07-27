@@ -58,7 +58,8 @@ object MmsSender {
      * @param recipients     Recipient phone number(s). Multiple numbers = group MMS.
      * @param body           Text body (may be blank when image-only).
      * @param attachmentUri  Content URI of media/file to attach, or null for text-only MMS.
-     * @param threadId       Telephony thread ID (used for logging; mmslib may override).
+     * @param threadId       Telephony thread ID — passed to sendNewMessage so the message
+     *                       lands in the correct existing thread.
      * @param subscriptionId SIM subscription ID (-1 = system default).
      */
     fun send(
@@ -73,7 +74,6 @@ object MmsSender {
     ) {
         if (recipients.isEmpty()) return
 
-        // Strip own phone number(s) from the recipient list
         val ownNumbers = context.getOwnPhoneNumbers()
         val filteredRecipients = recipients.filter { num ->
             val digits = num.filter { it.isDigit() }
@@ -91,36 +91,23 @@ object MmsSender {
             )
         }
 
-        if (mergedAttachments.isEmpty()) {
-            sendSingleMms(
-                context = context,
-                recipients = filteredRecipients,
-                body = body,
-                attachmentUri = null,
-                subscriptionId = subscriptionId,
-                scheduledMessageId = scheduledMessageId
-            )
-            return
-        }
-
-        mergedAttachments.forEachIndexed { index, uri ->
-            val isLast = index == mergedAttachments.lastIndex
-            sendSingleMms(
-                context = context,
-                recipients = filteredRecipients,
-                body = if (isLast) body else "",
-                attachmentUri = uri,
-                subscriptionId = subscriptionId,
-                scheduledMessageId = scheduledMessageId
-            )
-        }
+        sendMmsInternal(
+            context = context,
+            recipients = filteredRecipients,
+            body = body,
+            attachmentUris = mergedAttachments,
+            threadId = threadId,
+            subscriptionId = subscriptionId,
+            scheduledMessageId = scheduledMessageId
+        )
     }
 
-    private fun sendSingleMms(
+    private fun sendMmsInternal(
         context: Context,
         recipients: List<String>,
         body: String,
-        attachmentUri: Uri?,
+        attachmentUris: List<Uri>,
+        threadId: Long,
         subscriptionId: Int,
         scheduledMessageId: Long?
     ) {
@@ -129,12 +116,13 @@ object MmsSender {
             message.setSubject("Group message")
         }
 
-        if (attachmentUri != null) {
-            val mimeType = context.contentResolver.getType(attachmentUri)?.lowercase() ?: "application/octet-stream"
+        // Add all attachments to a single MMS (multipart/mixed) per library pattern
+        for (uri in attachmentUris) {
+            val mimeType = context.contentResolver.getType(uri)?.lowercase() ?: "application/octet-stream"
             val bytes = if (mimeType.startsWith("image/")) {
-                compressImage(context, attachmentUri)
+                compressImage(context, uri)
             } else {
-                readAttachment(context, attachmentUri)
+                readAttachment(context, uri)
             }
 
             if (bytes != null) {
@@ -144,35 +132,36 @@ object MmsSender {
                         mimeType == "text/plain" -> "application/txt"
                         else -> mimeType
                     }
-                    val attachmentName = resolveAttachmentName(context, attachmentUri, normalizedMime)
+                    val attachmentName = resolveAttachmentName(context, uri, normalizedMime)
                     message.addMedia(bytes, normalizedMime, attachmentName)
                     if (BuildConfig.DEBUG) Log.d(TAG, "MmsSender: added attachment mime=$normalizedMime name=$attachmentName bytes=${bytes.size}")
                 } catch (e: Exception) {
                     if (BuildConfig.DEBUG) Log.e(TAG, "MmsSender: failed to add attachment", e)
                 }
             } else {
-                if (BuildConfig.DEBUG) Log.w(TAG, "MmsSender: unable to read attachment data from uri=$attachmentUri")
+                if (BuildConfig.DEBUG) Log.w(TAG, "MmsSender: unable to read attachment data from uri=$uri")
             }
         }
 
         // Create Settings with desired behavior
         val settings = KlinkerSettings().apply {
-            setUseSystemSending(true)  // Use system MMS APIs (Lollipop+)
-            setGroup(recipients.size > 1)  // Group mode if multiple recipients
+            setUseSystemSending(true)
+            setGroup(recipients.size > 1)
             setDeliveryReports(Prefs.get().deliveryReports)
             if (subscriptionId >= 0) {
                 setSubscriptionId(subscriptionId)
             }
         }
+        applyCarrierMmsConfig(context, settings)
 
         // Create Transaction and attach callback
         val transaction = KlinkerTransaction(context, settings)
-        val resolvedThreadId = resolveThreadId(context, recipients)
-        val hasImage = attachmentUri?.let {
-            (context.contentResolver.getType(it) ?: "").startsWith("image/", ignoreCase = true)
-        } == true
+        val hasImage = attachmentUris.any { uri ->
+            runCatching { context.contentResolver.getType(uri)?.startsWith("image/", ignoreCase = true) == true }
+                .getOrDefault(false)
+        }
         val sentIntent = Intent(ACTION_MMS_SENT, null, context, MmsSentReceiver::class.java).apply {
-            putExtra(EXTRA_THREAD_ID, resolvedThreadId)
+            putExtra(EXTRA_THREAD_ID, threadId)
             putExtra("extra_has_image", hasImage)
             putExtra("extra_library_sender", true)
             if (scheduledMessageId != null) {
@@ -181,26 +170,80 @@ object MmsSender {
         }
         transaction.setExplicitBroadcastForSentMms(sentIntent)
 
-        // Send via mmslib
+        // Send via mmslib — pass threadId so message lands in the correct thread
         try {
-            if (BuildConfig.DEBUG) Log.d(TAG, "MmsSender: sending via mmslib recipients=$recipients group=${recipients.size > 1} subId=$subscriptionId")
-            transaction.sendNewMessage(message)
+            if (BuildConfig.DEBUG) Log.d(TAG, "MmsSender: sending via mmslib recipients=$recipients group=${recipients.size > 1} subId=$subscriptionId threadId=$threadId")
+            transaction.sendNewMessage(message, threadId)
             if (BuildConfig.DEBUG) Log.d(TAG, "MmsSender: sent successfully")
         } catch (e: Exception) {
             if (BuildConfig.DEBUG) Log.e(TAG, "MmsSender: send failed", e)
         }
     }
 
-    private fun resolveThreadId(context: Context, recipients: List<String>): Long {
-        return try {
-            if (recipients.size == 1) {
-                Telephony.Threads.getOrCreateThreadId(context, recipients.first())
-            } else {
-                Telephony.Threads.getOrCreateThreadId(context, recipients.toSet())
+    /**
+     * Mirrors the reference smsmms setup: configure MMSC/proxy/port from APN so
+     * carrier routing works even on ROMs where defaults are incomplete.
+     */
+    private fun applyCarrierMmsConfig(context: Context, settings: KlinkerSettings) {
+        var mmsc = ""
+        var proxy = ""
+        var port = ""
+
+        runCatching {
+            val projection = arrayOf(
+                Telephony.Carriers.MMSC,
+                Telephony.Carriers.MMSPROXY,
+                Telephony.Carriers.MMSPORT,
+                Telephony.Carriers.TYPE,
+                Telephony.Carriers.CURRENT
+            )
+            val selection = "${Telephony.Carriers.CURRENT}=1"
+
+            context.contentResolver.query(
+                Telephony.Carriers.CONTENT_URI,
+                projection,
+                selection,
+                null,
+                "_id DESC"
+            )?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val type = cursor.getString(3).orEmpty()
+                    if (!type.contains("mms", ignoreCase = true) && type != "*") {
+                        continue
+                    }
+                    mmsc = cursor.getString(0).orEmpty().trim()
+                    proxy = cursor.getString(1).orEmpty().trim()
+                    port = cursor.getString(2).orEmpty().trim()
+                    if (mmsc.isNotBlank()) break
+                }
             }
-        } catch (e: Exception) {
-            if (BuildConfig.DEBUG) Log.w(TAG, "MmsSender: resolveThreadId failed for $recipients", e)
-            -1L
+        }.onFailure {
+            if (BuildConfig.DEBUG) Log.w(TAG, "MmsSender: unable to query APN table for MMS config", it)
+        }
+
+        // Fallback to user-configured proxy when APN table is blocked by OEM policy.
+        if (proxy.isBlank()) {
+            val prefProxy = Prefs.get().mmsProxyHost.trim()
+            if (prefProxy.isNotBlank()) {
+                proxy = prefProxy
+                val prefPort = Prefs.get().mmsProxyPort
+                if (prefPort > 0) {
+                    port = prefPort.toString()
+                }
+            }
+        }
+
+        if (mmsc.isNotBlank()) settings.setMmsc(mmsc)
+        if (proxy.isNotBlank()) settings.setProxy(proxy)
+        if (port.isNotBlank()) settings.setPort(port)
+
+        // Keep headers explicit for stricter carrier gateways.
+        settings.setAgent("Android-Mms/2.0")
+        settings.setUaProfTagName("x-wap-profile")
+        settings.setUserProfileUrl("http://www.google.com/oha/rdf/ua-profile-20080331.xml")
+
+        if (BuildConfig.DEBUG) {
+            Log.d(TAG, "MmsSender: carrier config applied mmsc='${mmsc.take(80)}' proxy='$proxy' port='$port'")
         }
     }
 
