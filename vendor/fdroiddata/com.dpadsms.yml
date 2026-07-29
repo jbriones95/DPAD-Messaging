@@ -10,20 +10,23 @@ AutoName: DPAD Messaging
 
 RepoType: git
 Repo: https://github.com/jbriones95/DPAD-Messaging
+Binaries: https://github.com/jbriones95/DPAD-Messaging/releases/download/v%v/app-release.apk
+AllowedAPKSigningKeys:
+  - a615c1ceb99e0ce21b00c07e409a5d0777c92dfd0afc530cecd4f6419666ef80
 
 Builds:
-  - versionName: 0.2
-    versionCode: 20
-    commit: v0.2
+  - versionName: 0.2.6
+    versionCode: 26
+    commit: 83a6e3323cff0eeee9a056cfcba7e6fa8d02fd8c
     subdir: app
     gradle:
       - yes
     srclibs:
-      - "mmslib@https://github.com/FossifyOrg/mmslib.git@v1.0.0"
+      - "mmslib@https://github.com/FossifyOrg/mmslib.git@f84b010dcbffeaff28c32391680da25eef6ab4ba"
     prebuild:
       - cp -r $$mmslib$$/library vendor/mmslib
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
-CurrentVersion: 0.2
-CurrentVersionCode: 20
+CurrentVersion: 0.2.6
+CurrentVersionCode: 26
