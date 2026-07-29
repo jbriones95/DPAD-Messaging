@@ -26,7 +26,5 @@ Builds:
     prebuild:
       - cp -r $$mmslib$$/library vendor/mmslib
 
-AutoUpdateMode: Version
-UpdateCheckMode: Tags
 CurrentVersion: 0.2.6
 CurrentVersionCode: 26
