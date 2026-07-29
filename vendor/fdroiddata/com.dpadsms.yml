@@ -21,7 +21,7 @@ Builds:
     gradle:
       - yes
     srclibs:
-      - mmslib@https://github.com/FossifyOrg/mmslib.git@f84b010dcbffeaff28c32391680da25eef6ab4ba
+      - mmslib@f84b010dcbffeaff28c32391680da25eef6ab4ba
     prebuild: cp -r $$mmslib$$/library vendor/mmslib
 
 AllowedAPKSigningKeys: a615c1ceb99e0ce21b00c07e409a5d0777c92dfd0afc530cecd4f6419666ef80
