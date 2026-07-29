@@ -16,13 +16,13 @@ Binaries:
 Builds:
   - versionName: 0.2.6
     versionCode: 26
-    commit: 83a6e3323cff0eeee9a056cfcba7e6fa8d02fd8c
+    commit: fe7effa0eca1b3e62a85bad1aaee1dc35f5d1369
     subdir: app
     gradle:
       - yes
     srclibs:
       - mmslib@f84b010dcbffeaff28c32391680da25eef6ab4ba
-    prebuild: cp -r $$mmslib$$ vendor/mmslib
+    prebuild: mkdir -p ../vendor && rm -rf ../vendor/mmslib && cp -r $$mmslib$$ ../vendor/mmslib
 
 AllowedAPKSigningKeys: a615c1ceb99e0ce21b00c07e409a5d0777c92dfd0afc530cecd4f6419666ef80
 
