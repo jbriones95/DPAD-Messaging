@@ -71,3 +71,10 @@ jobs:
         run: ./gradlew assembleRelease
         env:
           RELEASE_STORE_FILE: "${{ runner.temp }}/release.jks"
+
+      - name: Upload signed release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: com.dpadsms_release.apk
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
