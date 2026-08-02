@@ -42,7 +42,6 @@ jobs:
     needs: pr-quality-gates
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
     env:
-      RELEASE_STORE_FILE: ${{ secrets.RELEASE_STORE_FILE }}
       RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
       RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
       RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
@@ -63,5 +62,11 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
+      - name: Decode release keystore
+        run: echo "${{ secrets.RELEASE_STORE_FILE }}" | base64 --decode > "$RUNNER_TEMP/release.jks"
+        shell: bash
+
       - name: Build release (signed gate)
         run: ./gradlew assembleRelease
+        env:
+          RELEASE_STORE_FILE: "${{ runner.temp }}/release.jks"

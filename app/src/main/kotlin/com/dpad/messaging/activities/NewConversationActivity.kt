@@ -139,11 +139,16 @@ class NewConversationActivity : BaseActivity() {
 
         binding.btnSend.setOnClickListener { sendAndOpen() }
 
-        // ENTER on recipient field → go to Next flow.
-        binding.etRecipient.setOnEditorActionListener { _, _, event ->
+        // ENTER/DONE on recipient field → confirm recipient as a chip and let the
+        // user navigate to Next. On keypad devices the center/OK key is often
+        // delivered as the IME "Done" action instead of a raw key event, so both
+        // paths must create the chip rather than silently doing nothing.
+        binding.etRecipient.setOnEditorActionListener { _, actionId, event ->
             if (event?.keyCode == KeyEvent.KEYCODE_ENTER &&
                 event.action == KeyEvent.ACTION_DOWN) {
-                sendAndOpen(); true
+                addRecipientFromInput(); true
+            } else if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
+                addRecipientFromInput(); true
             } else false
         }
 

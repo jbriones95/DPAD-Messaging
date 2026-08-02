@@ -12,6 +12,7 @@ import android.content.res.ColorStateList
 import android.net.Uri
 import android.os.Bundle
 import android.provider.ContactsContract
+import android.provider.MediaStore
 import android.provider.Telephony
 import android.telephony.SubscriptionManager
 import android.text.Editable
@@ -171,10 +172,18 @@ class ThreadActivity : BaseActivity() {
         ) { success ->
             val uri = pendingCameraUri
             if (success && uri != null) {
-                pendingAttachmentUri = uri
-                pendingAttachmentUris.clear()
-                pendingAttachmentUris.add(uri)
-                showAttachmentPreview(uri)
+                // Some camera apps (e.g. the Kyocera ROM) ignore EXTRA_OUTPUT and
+                // write the photo to their own gallery instead of our FileProvider
+                // target. If the target is unreadable, attach the latest photo taken.
+                val target = if (isAttachmentReadable(uri)) uri else findLatestCameraImage()
+                if (target != null) {
+                    pendingAttachmentUri = target
+                    pendingAttachmentUris.clear()
+                    pendingAttachmentUris.add(target)
+                    showAttachmentPreview(target)
+                } else {
+                    runCatching { contentResolver.delete(uri, null, null) }
+                }
             } else if (uri != null) {
                 runCatching { contentResolver.delete(uri, null, null) }
             }
@@ -320,9 +329,11 @@ class ThreadActivity : BaseActivity() {
             if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
             when (keyCode) {
                 KeyEvent.KEYCODE_DPAD_UP    -> { goUpFromCompose(); true }
-                KeyEvent.KEYCODE_DPAD_RIGHT -> { binding.btnSchedule.requestFocus(); true }
+                KeyEvent.KEYCODE_DPAD_RIGHT -> { binding.etMessage.focusSearch(View.FOCUS_RIGHT)?.requestFocus(); true }
                 KeyEvent.KEYCODE_DPAD_LEFT  -> { binding.btnAttach.requestFocus(); true }
-                KeyEvent.KEYCODE_DPAD_CENTER -> { createNumberChip(); true }
+                KeyEvent.KEYCODE_DPAD_CENTER -> { insertNewLine(); true }
+                KeyEvent.KEYCODE_ENTER,
+                KeyEvent.KEYCODE_NUMPAD_ENTER -> { insertNewLine(); true }
                 else -> false
             }
         }
@@ -557,91 +568,66 @@ class ThreadActivity : BaseActivity() {
         cameraCaptureLauncher.launch(uri)
     }
 
-    // ─── Number chips ──────────────────────────────────────────────────────
-
     /**
-     * Extracts numbers from the compose input and converts them into visual chips.
-     * When DPAD center is pressed, any digits in the input are converted to a chip
-     * and the number is removed from the text.
+     * Returns true if the given URI can actually be opened and read.
+     * Used to detect camera apps that ignore EXTRA_OUTPUT and never write the
+     * requested FileProvider target.
      */
-    private fun createNumberChip() {
-        val text = binding.etMessage.text?.toString() ?: ""
-        if (text.isEmpty()) return
-
-        // Extract all numbers from the text
-        val numbers = text.filter { it.isDigit() }
-        if (numbers.isEmpty()) return
-
-        // Create a chip for the number
-        addNumberChip(numbers)
-
-        // Remove the numbers from the input
-        val cleanedText = text.filter { !it.isDigit() }.trim()
-        binding.etMessage.setText(cleanedText)
-        if (cleanedText.isNotEmpty()) {
-            binding.etMessage.setSelection(cleanedText.length)
-        }
-        updateSendButtonState()
+    private fun isAttachmentReadable(uri: Uri): Boolean = try {
+        contentResolver.openInputStream(uri)?.use { it.read() != -1 } ?: false
+    } catch (e: Exception) {
+        if (BuildConfig.DEBUG) Log.w("DPAD_MSG", "ThreadActivity: attachment unreadable: $uri", e)
+        false
     }
 
     /**
-     * Adds a visual chip for the given number to the chips container.
+     * Fallback for camera apps that ignore EXTRA_OUTPUT: returns the most recent
+     * photo in the media store, restricted to the last few minutes so we don't
+     * pick up an unrelated older image.
      */
-    private fun addNumberChip(number: String) {
-        val chipView = android.widget.Button(this).apply {
-            text = number
-            isAllCaps = false
-            textSize = 12f
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
-                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                marginEnd = 6.dpToPx()
-                marginStart = 6.dpToPx()
+    private fun findLatestCameraImage(): Uri? {
+        val collection = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        } else {
+            @Suppress("DEPRECATION")
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        }
+        val cutoffSeconds = System.currentTimeMillis() / 1000L - 5 * 60
+        val selection = "${MediaStore.Images.Media.DATE_ADDED} >= ?"
+        val selectionArgs = arrayOf(cutoffSeconds.toString())
+        return runCatching {
+            contentResolver.query(
+                collection,
+                arrayOf(MediaStore.Images.Media._ID),
+                selection,
+                selectionArgs,
+                "${MediaStore.Images.Media.DATE_ADDED} DESC"
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID))
+                    ContentUris.withAppendedId(collection, id)
+                } else null
             }
-            background = getDrawable(R.drawable.button_focusable_bg)
-            val accent = ThemeManager.accentColor(this@ThreadActivity)
-            backgroundTintList = android.content.res.ColorStateList.valueOf(accent)
-            setTextColor(androidx.core.content.ContextCompat.getColor(this@ThreadActivity, R.color.colorOnPrimary))
-            setOnClickListener { removeNumberChip(this, number) }
-            isFocusable = true
-            isFocusableInTouchMode = true
-            contentDescription = getString(R.string.tap_to_remove_number, number)
-        }
-
-        binding.chipsContainer.addView(chipView)
-
-        // Show the chips container
-        if (binding.chipsContainerScroll.visibility != View.VISIBLE) {
-            binding.chipsContainerScroll.visibility = View.VISIBLE
-            // Update the attachment preview bar to point to chips container instead of compose
-            binding.btnRemoveAttachment.nextFocusDownId = R.id.chips_container_scroll
-        }
+        }.getOrNull()
     }
 
-    /**
-     * Removes a number chip and restores it to the input.
-     */
-    private fun removeNumberChip(chipView: View, number: String) {
-        binding.chipsContainer.removeView(chipView)
+    // ─── Compose input helpers ──────────────────────────────────────────────
 
-        // If no more chips, hide the container
-        if (binding.chipsContainer.childCount == 0) {
-            binding.chipsContainerScroll.visibility = View.GONE
-            binding.btnRemoveAttachment.nextFocusDownId = R.id.btn_attach
+    /**
+     * Inserts a newline at the cursor position. Used for the DPAD center key on
+     * keypad devices, where the center key adds a line break in a text field.
+     */
+    private fun insertNewLine() {
+        val editable = binding.etMessage.text ?: return
+        val selStart = binding.etMessage.selectionStart
+        val selEnd   = binding.etMessage.selectionEnd
+        if (selStart in 0..editable.length && selEnd in 0..editable.length) {
+            if (selStart == selEnd) editable.insert(selStart, "\n")
+            else editable.replace(selStart, selEnd, "\n")
+        } else {
+            editable.append("\n")
         }
-
-        // Restore the number to the input
-        val currentText = binding.etMessage.text?.toString() ?: ""
-        binding.etMessage.setText(getString(R.string.compose_restore_number, currentText, number).trim())
-        binding.etMessage.setSelection(binding.etMessage.text?.length ?: 0)
-        updateSendButtonState()
     }
-
-    /**
-     * Extension function to convert DP to pixels.
-     */
-    private fun Int.dpToPx(): Int = (this * resources.displayMetrics.density).toInt()
 
     // ─── Send button state ──────────────────────────────────────────────────
 
