@@ -1,0 +1,4 @@
+- Fix: DPAD center/OK key now inserts a line break instead of stripping numbers into chips (fixes reordered/restructured messages on keypad devices)
+- Fix: DPAD right on the compose field moves to the next button instead of affecting the text
+- Fix: New-thread screen now confirms the number as a chip when center/OK is pressed
+- Fix: Camera-captured images now send on devices whose camera app ignores EXTRA_OUTPUT (e.g. Kyocera) by falling back to the latest gallery photo
