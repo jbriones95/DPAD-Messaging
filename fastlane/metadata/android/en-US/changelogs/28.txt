@@ -1,0 +1,2 @@
+- Feature: Save received photos to the device gallery from the image viewer
+- Feature: Long message bodies now scroll one line at a time with the DPAD

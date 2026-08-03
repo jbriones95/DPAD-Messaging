@@ -31,4 +31,14 @@
         android:textColor="@android:color/white"
         android:textStyle="bold" />
 
+    <Button
+        android:id="@+id/btn_save_image"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="@dimen/image_viewer_overlay_margin"
+        android:focusable="true"
+        android:nextFocusUp="@id/iv_full_image"
+        android:text="@string/save_photo_to_gallery" />
+
 </FrameLayout>

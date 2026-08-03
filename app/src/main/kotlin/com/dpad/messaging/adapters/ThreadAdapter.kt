@@ -132,6 +132,7 @@ class ThreadAdapter(
     ) : RecyclerView.ViewHolder(binding.root) {
         fun bind(message: Message) {
             binding.tvBody.text = message.body
+            binding.tvBody.scrollTo(0, 0)
             binding.tvBody.visibility = if (message.body.isBlank()) View.GONE else View.VISIBLE
             binding.tvTime.text = formatTime(message.date)
             if (message.status == Message.STATUS_COMPLETE) {
@@ -173,6 +174,7 @@ class ThreadAdapter(
     ) : RecyclerView.ViewHolder(binding.root) {
         fun bind(message: Message) {
             binding.tvBody.text = message.body
+            binding.tvBody.scrollTo(0, 0)
             binding.tvBody.visibility = if (message.body.isBlank()) View.GONE else View.VISIBLE
             binding.tvTime.text = formatTime(message.date)
             if (message.senderName.isNotBlank()) {
@@ -219,6 +221,7 @@ class ThreadAdapter(
                 else -> ""
             }
             binding.tvBody.text = bodyText
+            binding.tvBody.scrollTo(0, 0)
             binding.tvBody.visibility = if (bodyText.isBlank()) View.GONE else View.VISIBLE
             if (message.isScheduled) {
                 binding.ivScheduled.visibility = View.VISIBLE
@@ -267,6 +270,7 @@ class ThreadAdapter(
     ) : RecyclerView.ViewHolder(binding.root) {
         fun bind(message: Message) {
             binding.tvBody.text = message.body
+            binding.tvBody.scrollTo(0, 0)
             binding.tvBody.visibility = if (message.body.isBlank()) View.GONE else View.VISIBLE
             binding.bubbleContainer.setOnLongClickListener {
                 onMessageLongClick(message)
