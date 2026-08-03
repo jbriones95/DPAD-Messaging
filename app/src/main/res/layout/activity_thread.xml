@@ -192,7 +192,7 @@
             android:nextFocusUp="@id/chips_container_scroll" />
 
         <!-- Message compose field -->
-        <EditText
+        <com.dpad.messaging.views.DpadComposeEditText
             android:id="@+id/et_message"
             android:layout_width="0dp"
             android:layout_height="wrap_content"

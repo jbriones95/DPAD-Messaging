@@ -1,0 +1,1 @@
+- Fix: DPAD right key on the compose field now moves to the next button instead of inserting a space

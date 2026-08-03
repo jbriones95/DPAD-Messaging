@@ -329,7 +329,6 @@ class ThreadActivity : BaseActivity() {
             if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
             when (keyCode) {
                 KeyEvent.KEYCODE_DPAD_UP    -> { goUpFromCompose(); true }
-                KeyEvent.KEYCODE_DPAD_RIGHT -> { binding.etMessage.focusSearch(View.FOCUS_RIGHT)?.requestFocus(); true }
                 KeyEvent.KEYCODE_DPAD_LEFT  -> { binding.btnAttach.requestFocus(); true }
                 KeyEvent.KEYCODE_DPAD_CENTER -> { insertNewLine(); true }
                 KeyEvent.KEYCODE_ENTER,
