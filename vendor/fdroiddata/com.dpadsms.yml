@@ -2,7 +2,7 @@ Categories:
   - Phone & SMS
 License: MIT
 AuthorName: jbriones95
-AuthorEmail: 108902016+jbriones95@users.noreply.github.com
+AuthorEmail: thedumbphoneshow@gmail.com
 SourceCode: https://github.com/jbriones95/DPAD-Messaging
 IssueTracker: https://github.com/jbriones95/DPAD-Messaging/issues
 
@@ -10,6 +10,8 @@ AutoName: DPAD Messaging
 
 RepoType: git
 Repo: https://github.com/jbriones95/DPAD-Messaging
+Binaries: https://github.com/jbriones95/DPAD-Messaging/releases/download/v%v/app-release.apk
+AllowedAPKSigningKeys: c7eeb6b0a8089ead8ff786af45ffc545f4c4f7be38dd62655e42843eec91ed6e
 
 Builds:
   - versionName: 0.2.9
@@ -20,9 +22,12 @@ Builds:
       - yes
     srclibs:
       - mmslib@f84b010dcbffeaff28c32391680da25eef6ab4ba
-    prebuild: mkdir -p ../vendor && rm -rf ../vendor/mmslib && cp -r $$mmslib$$ ../vendor/mmslib
+    prebuild:
+      - mkdir -p ../vendor
+      - rm -rf ../vendor/mmslib
+      - cp -r $$mmslib$$ ../vendor/mmslib
 
-AutoUpdateMode: None
-UpdateCheckMode: None
+AutoUpdateMode: Version
+UpdateCheckMode: Tags ^v\d+\.\d+\.\d+$
 CurrentVersion: 0.2.9
 CurrentVersionCode: 29
