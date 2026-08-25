@@ -53,6 +53,7 @@ import com.dpad.messaging.models.Message
 import com.dpad.messaging.models.RecycleBinMessage
 import com.dpad.messaging.models.ThreadItem
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.greenrobot.eventbus.EventBus
@@ -95,6 +96,8 @@ class ThreadActivity : BaseActivity() {
     private lateinit var contactPickerLauncher: ActivityResultLauncher<Void?>
     private lateinit var cameraCaptureLauncher: ActivityResultLauncher<Uri>
     private var hasInitializedList = false
+    private var loadMessagesJob: Job? = null
+    private var displayMessagesJob: Job? = null
 
     // ─── Lifecycle ─────────────────────────────────────────────────────────
 
@@ -146,18 +149,24 @@ class ThreadActivity : BaseActivity() {
             ActivityResultContracts.PickContact()
         ) { contactUri ->
             if (contactUri != null) {
-                // Build a vCard URI from the lookup key so openInputStream() works.
-                contentResolver.query(
-                    contactUri,
-                    arrayOf(ContactsContract.Contacts.LOOKUP_KEY),
-                    null, null, null
-                )?.use { cursor ->
-                    if (cursor.moveToFirst()) {
-                        val lookupKey = cursor.getString(0)
-                        val vCardUri = Uri.withAppendedPath(
-                            ContactsContract.Contacts.CONTENT_VCARD_URI,
-                            Uri.encode(lookupKey)
-                        )
+                lifecycleScope.launch {
+                    // Build a vCard URI from the lookup key so openInputStream() works.
+                    val vCardUri = withContext(Dispatchers.IO) {
+                        contentResolver.query(
+                            contactUri,
+                            arrayOf(ContactsContract.Contacts.LOOKUP_KEY),
+                            null, null, null
+                        )?.use { cursor ->
+                            if (cursor.moveToFirst()) {
+                                val lookupKey = cursor.getString(0)
+                                Uri.withAppendedPath(
+                                    ContactsContract.Contacts.CONTENT_VCARD_URI,
+                                    Uri.encode(lookupKey)
+                                )
+                            } else null
+                        }
+                    }
+                    if (vCardUri != null) {
                         pendingAttachmentUri = vCardUri
                         pendingAttachmentUris.clear()
                         pendingAttachmentUris.add(vCardUri)
@@ -172,20 +181,27 @@ class ThreadActivity : BaseActivity() {
         ) { success ->
             val uri = pendingCameraUri
             if (success && uri != null) {
-                // Some camera apps (e.g. the Kyocera ROM) ignore EXTRA_OUTPUT and
-                // write the photo to their own gallery instead of our FileProvider
-                // target. If the target is unreadable, attach the latest photo taken.
-                val target = if (isAttachmentReadable(uri)) uri else findLatestCameraImage()
-                if (target != null) {
-                    pendingAttachmentUri = target
-                    pendingAttachmentUris.clear()
-                    pendingAttachmentUris.add(target)
-                    showAttachmentPreview(target)
-                } else {
-                    runCatching { contentResolver.delete(uri, null, null) }
+                lifecycleScope.launch {
+                    // Some camera apps ignore EXTRA_OUTPUT and write the photo to
+                    // their own gallery. Keep both checks off the main thread.
+                    val target = withContext(Dispatchers.IO) {
+                        if (isAttachmentReadable(uri)) uri else findLatestCameraImage()
+                    }
+                    if (target != null) {
+                        pendingAttachmentUri = target
+                        pendingAttachmentUris.clear()
+                        pendingAttachmentUris.add(target)
+                        showAttachmentPreview(target)
+                    } else {
+                        withContext(Dispatchers.IO) {
+                            runCatching { contentResolver.delete(uri, null, null) }
+                        }
+                    }
                 }
             } else if (uri != null) {
-                runCatching { contentResolver.delete(uri, null, null) }
+                lifecycleScope.launch(Dispatchers.IO) {
+                    runCatching { contentResolver.delete(uri, null, null) }
+                }
             }
             pendingCameraUri = null
         }
@@ -227,12 +243,24 @@ class ThreadActivity : BaseActivity() {
     // ─── Setup ─────────────────────────────────────────────────────────────
 
     private fun setupToolbar() {
-        val titleForToolbar = if (participants.size > 1) {
-            participants.joinToString(", ") { App.get().contactHelper.getDisplayName(it) }
+        val groupParticipants = participants
+        binding.tvContactName.text = if (groupParticipants.size > 1) {
+            groupParticipants.joinToString(", ")
         } else {
             threadTitle
         }
-        binding.tvContactName.text = titleForToolbar
+        if (groupParticipants.size > 1) {
+            lifecycleScope.launch {
+                val title = withContext(Dispatchers.IO) {
+                    groupParticipants.joinToString(", ") {
+                        App.get().contactHelper.getDisplayName(it)
+                    }
+                }
+                if (participants == groupParticipants) {
+                    binding.tvContactName.text = title
+                }
+            }
+        }
 
         binding.btnBack.setOnClickListener { finish() }
 
@@ -329,7 +357,6 @@ class ThreadActivity : BaseActivity() {
             if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
             when (keyCode) {
                 KeyEvent.KEYCODE_DPAD_UP    -> { goUpFromCompose(); true }
-                KeyEvent.KEYCODE_DPAD_LEFT  -> { binding.btnAttach.requestFocus(); true }
                 KeyEvent.KEYCODE_DPAD_CENTER -> { insertNewLine(); true }
                 KeyEvent.KEYCODE_ENTER,
                 KeyEvent.KEYCODE_NUMPAD_ENTER -> { insertNewLine(); true }
@@ -454,25 +481,28 @@ class ThreadActivity : BaseActivity() {
     private fun showAttachmentPreview(uri: Uri) {
         try {
             binding.attachmentPreviewBar.visibility = View.VISIBLE
-            val mimeType = try { contentResolver.getType(uri)?.lowercase().orEmpty() } catch (_: Exception) { "" }
-            if (mimeType.startsWith("image/")) {
-                try {
-                    // Avoid requesting original-size bitmaps (can OOM on very large images).
-                    Glide.with(this)
-                        .load(uri)
-                        .centerCrop()
-                        .override(800, 800)
-                        .into(binding.ivAttachmentPreview)
-                } catch (e: Exception) {
-                    // Glide or provider may throw — fallback to generic icon
-                    if (BuildConfig.DEBUG) Log.w("DPAD_MSG", "showAttachmentPreview: failed to load image preview", e)
+            lifecycleScope.launch {
+                val mimeType = withContext(Dispatchers.IO) {
+                    try { contentResolver.getType(uri)?.lowercase().orEmpty() } catch (_: Exception) { "" }
+                }
+                if (mimeType.startsWith("image/")) {
+                    try {
+                        // Avoid requesting original-size bitmaps (can OOM on very large images).
+                        Glide.with(this@ThreadActivity)
+                            .load(uri)
+                            .centerCrop()
+                            .override(800, 800)
+                            .into(binding.ivAttachmentPreview)
+                    } catch (e: Exception) {
+                        if (BuildConfig.DEBUG) Log.w("DPAD_MSG", "showAttachmentPreview: failed to load image preview", e)
+                        binding.ivAttachmentPreview.setImageResource(R.drawable.ic_attach)
+                    }
+                } else {
                     binding.ivAttachmentPreview.setImageResource(R.drawable.ic_attach)
                 }
-            } else {
-                binding.ivAttachmentPreview.setImageResource(R.drawable.ic_attach)
+                binding.btnRemoveAttachment.requestFocus()
+                updateSendButtonState()
             }
-            binding.btnRemoveAttachment.requestFocus()
-            updateSendButtonState()
         } catch (e: SecurityException) {
             // Missing permission to read the URI — show a friendly fallback and log
             if (BuildConfig.DEBUG) Log.w("DPAD_MSG", "showAttachmentPreview: security error for uri=$uri", e)
@@ -526,7 +556,7 @@ class ThreadActivity : BaseActivity() {
         pendingAttachmentUris.clear()
         binding.attachmentPreviewBar.visibility = View.GONE
         Glide.with(this).clear(binding.ivAttachmentPreview)
-        deleteCameraTempFile()
+        lifecycleScope.launch(Dispatchers.IO) { deleteCameraTempFile() }
         updateSendButtonState()
     }
 
@@ -810,7 +840,8 @@ class ThreadActivity : BaseActivity() {
         }
 
         // Always refresh from the real source of truth (Telephony ContentProvider)
-        lifecycleScope.launch {
+        loadMessagesJob?.cancel()
+        loadMessagesJob = lifecycleScope.launch {
             val messages = withContext(Dispatchers.IO) {
                 getMessagesForThread(threadId, App.get().contactHelper)
             }
@@ -821,16 +852,21 @@ class ThreadActivity : BaseActivity() {
     }
 
     private fun displayMessages(messages: List<Message>, fromCache: Boolean) {
-        val items = ThreadItem.fromMessages(messages)
-        threadAdapter.submitList(items) {
-            // Keep initial auto-scroll behavior, but avoid stealing D-pad focus on every refresh
-            if (!hasInitializedList) {
-                binding.rvMessages.scrollToPosition(threadAdapter.itemCount - 1)
-                binding.rvMessages.post {
+        displayMessagesJob?.cancel()
+        displayMessagesJob = lifecycleScope.launch {
+            val items = withContext(Dispatchers.Default) {
+                ThreadItem.fromMessages(messages)
+            }
+            threadAdapter.submitList(items) {
+                // Keep initial auto-scroll behavior, but avoid stealing D-pad focus on every refresh
+                if (!hasInitializedList && threadAdapter.itemCount > 0) {
                     binding.rvMessages.scrollToPosition(threadAdapter.itemCount - 1)
-                }
-                if (!fromCache) {
-                    hasInitializedList = true
+                    binding.rvMessages.post {
+                        binding.rvMessages.scrollToPosition(threadAdapter.itemCount - 1)
+                    }
+                    if (!fromCache) {
+                        hasInitializedList = true
+                    }
                 }
             }
         }

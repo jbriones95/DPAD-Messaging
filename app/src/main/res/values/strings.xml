@@ -237,4 +237,13 @@
     <string name="backup_warning_title">Sensitive Data Warning</string>
     <string name="backup_warning_message">The backup file contains ALL your messages, contact numbers, blocked lists, and app settings in encrypted form. The file can only be restored on this device, not on another device. Keep the file in a safe place.</string>
     <string name="backup_confirm">Create Backup</string>
+    <string name="check_for_updates">Check for updates</string>
+    <string name="check_for_updates_summary">Download and install the latest signed release</string>
+    <string name="checking_for_updates">Checking for updates…</string>
+    <string name="app_up_to_date">You are up to date</string>
+    <string name="update_available">Update available: %1$s</string>
+    <string name="update_available_summary">A newer release is ready to install.</string>
+    <string name="install_update">Install update</string>
+    <string name="update_check_failed">Update check failed: %1$s</string>
+    <string name="update_installer_unavailable">Android could not open the package installer</string>
 </resources>

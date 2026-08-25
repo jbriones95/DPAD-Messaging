@@ -145,10 +145,7 @@ class ThreadAdapter(
             if (message.isMms && message.attachmentsJson.startsWith("content://")) {
                 binding.ivAttachment.visibility = View.VISIBLE
                 val attachmentUri = message.attachmentsJson
-                Glide.with(binding.root.context)
-                    .load(Uri.parse(attachmentUri))
-
-                    .into(binding.ivAttachment)
+                loadAttachment(binding.ivAttachment, attachmentUri)
                 binding.ivAttachment.isFocusable = true
                 binding.ivAttachment.isFocusableInTouchMode = true
                 binding.ivAttachment.isClickable = true
@@ -187,10 +184,7 @@ class ThreadAdapter(
             if (message.isMms && message.attachmentsJson.startsWith("content://")) {
                 binding.ivAttachment.visibility = View.VISIBLE
                 val attachmentUri = message.attachmentsJson
-                Glide.with(binding.root.context)
-                    .load(Uri.parse(attachmentUri))
-
-                    .into(binding.ivAttachment)
+                loadAttachment(binding.ivAttachment, attachmentUri)
                 binding.ivAttachment.isFocusable = true
                 binding.ivAttachment.isFocusableInTouchMode = true
                 binding.ivAttachment.isClickable = true
@@ -234,10 +228,7 @@ class ThreadAdapter(
             if (message.isMms && message.attachmentsJson.startsWith("content://")) {
                 binding.ivAttachment.visibility = View.VISIBLE
                 val attachmentUri = message.attachmentsJson
-                Glide.with(binding.root.context)
-                    .load(Uri.parse(attachmentUri))
-
-                    .into(binding.ivAttachment)
+                loadAttachment(binding.ivAttachment, attachmentUri)
                 binding.ivAttachment.isFocusable = true
                 binding.ivAttachment.isFocusableInTouchMode = true
                 binding.ivAttachment.isClickable = true
@@ -263,6 +254,17 @@ class ThreadAdapter(
         val intent = Intent(context, ImageViewerActivity::class.java)
             .putExtra(ImageViewerActivity.EXTRA_IMAGE_URI, attachmentUri)
         context.startActivity(intent)
+    }
+
+    private fun loadAttachment(imageView: android.widget.ImageView, attachmentUri: String) {
+        val resources = imageView.resources
+        Glide.with(imageView)
+            .load(Uri.parse(attachmentUri))
+            .override(
+                resources.getDimensionPixelSize(R.dimen.attachment_image_width),
+                resources.getDimensionPixelSize(R.dimen.attachment_image_height)
+            )
+            .into(imageView)
     }
 
     inner class FailedViewHolder(

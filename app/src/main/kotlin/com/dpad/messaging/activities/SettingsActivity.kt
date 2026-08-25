@@ -16,6 +16,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import com.dpad.messaging.App
 import com.dpad.messaging.BuildConfig
@@ -24,6 +25,7 @@ import com.dpad.messaging.databinding.ActivitySettingsBinding
 import com.dpad.messaging.helpers.BackupManager
 import com.dpad.messaging.helpers.Prefs
 import com.dpad.messaging.helpers.ThemeManager
+import com.dpad.messaging.helpers.UpdateManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -338,6 +340,12 @@ class SettingsActivity : BaseActivity() {
 
         navRow(
             container = c,
+            label     = getString(R.string.check_for_updates),
+            summary   = getString(R.string.check_for_updates_summary),
+            onClick   = { checkForUpdates() }
+        )
+        navRow(
+            container = c,
             label     = getString(R.string.notifications),
             summary   = getString(R.string.notifications_summary),
             onClick   = {
@@ -359,6 +367,54 @@ class SettingsActivity : BaseActivity() {
                     .show()
             }
         )
+    }
+
+    private fun checkForUpdates() {
+        Toast.makeText(this, R.string.checking_for_updates, Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            when (val result = withContext(Dispatchers.IO) {
+                UpdateManager.check(this@SettingsActivity)
+            }) {
+                UpdateManager.Result.UpToDate -> {
+                    Toast.makeText(this@SettingsActivity, R.string.app_up_to_date, Toast.LENGTH_SHORT).show()
+                }
+                is UpdateManager.Result.Available -> {
+                    val notes = result.releaseNotes.ifBlank { getString(R.string.update_available_summary) }
+                    AlertDialog.Builder(this@SettingsActivity)
+                        .setTitle(getString(R.string.update_available, result.versionName))
+                        .setMessage(notes)
+                        .setPositiveButton(R.string.install_update) { _, _ -> installUpdate(result.apk) }
+                        .setNegativeButton(android.R.string.cancel, null)
+                        .show()
+                }
+                is UpdateManager.Result.Error -> {
+                    Toast.makeText(
+                        this@SettingsActivity,
+                        getString(R.string.update_check_failed, result.message),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
+
+    private fun installUpdate(apk: java.io.File) {
+        val apkUri = FileProvider.getUriForFile(this, "$packageName.fileprovider", apk)
+        val installIntent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(apkUri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        try {
+            startActivity(installIntent)
+        } catch (_: SecurityException) {
+            startActivity(
+                Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+            )
+        } catch (_: android.content.ActivityNotFoundException) {
+            Toast.makeText(this, R.string.update_installer_unavailable, Toast.LENGTH_LONG).show()
+        }
     }
 
     // ─── Row builders ─────────────────────────────────────────────────────────

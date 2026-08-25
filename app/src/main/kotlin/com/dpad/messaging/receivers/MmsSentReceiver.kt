@@ -38,6 +38,18 @@ class MmsSentReceiver : BroadcastReceiver() {
     }
 
     override fun onReceive(context: Context, intent: Intent) {
+        val receiverResultCode = resultCode
+        val pendingResult = goAsync()
+        AppCoroutineScopes.io.launch {
+            try {
+                processReceive(context, intent, receiverResultCode)
+            } finally {
+                pendingResult.finish()
+            }
+        }
+    }
+
+    private fun processReceive(context: Context, intent: Intent, resultCode: Int) {
         val threadId = intent.getLongExtra(MmsSender.EXTRA_THREAD_ID, -1L)
         val hasImage = intent.getBooleanExtra("extra_has_image", false)
         val isSuccess = resultCode == Activity.RESULT_OK

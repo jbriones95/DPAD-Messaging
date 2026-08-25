@@ -1,0 +1,4 @@
+- Add: Check for and install signed updates from GitHub Releases
+- Fix: DPAD left and right move the text cursor and exit at text boundaries
+- Fix: DPAD down exits the compose field and moves to the Schedule button
+- Improve: Move message, contact, attachment, and MMS processing off the main thread

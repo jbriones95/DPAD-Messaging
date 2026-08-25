@@ -15,9 +15,7 @@ import com.dpad.messaging.helpers.MmsHelper
 import com.dpad.messaging.helpers.NotificationHelper
 import com.dpad.messaging.helpers.SmsWhitelistManager
 import com.klinker.android.send_message.MmsReceivedReceiver
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import org.greenrobot.eventbus.EventBus
 
 /**
@@ -29,6 +27,17 @@ import org.greenrobot.eventbus.EventBus
 class LibraryMmsReceivedReceiver : MmsReceivedReceiver() {
 
     override fun onMessageReceived(context: Context, messageUri: Uri) {
+        val pendingResult = goAsync()
+        AppCoroutineScopes.io.launch {
+            try {
+                processMessageReceived(context, messageUri)
+            } finally {
+                pendingResult.finish()
+            }
+        }
+    }
+
+    private suspend fun processMessageReceived(context: Context, messageUri: Uri) {
         val msgId = messageUri.lastPathSegment?.toLongOrNull() ?: run {
             if (BuildConfig.DEBUG) Log.w(TAG, "LibraryMmsReceivedReceiver: invalid messageUri=$messageUri")
             EventBus.getDefault().post(RefreshConversations())
@@ -48,13 +57,8 @@ class LibraryMmsReceivedReceiver : MmsReceivedReceiver() {
 
         val body = MmsHelper.getMmsDisplayBody(context, msgId, subject)
 
-        // Room DAO calls are suspend — run on IO dispatcher
-        val blockedNumbers = runBlocking(Dispatchers.IO) {
-            App.get().database.blockedNumbersDao().getAll()
-        }
-        val blockedKeywords = runBlocking(Dispatchers.IO) {
-            App.get().database.blockedKeywordsDao().getAll()
-        }
+        val blockedNumbers = App.get().database.blockedNumbersDao().getAll()
+        val blockedKeywords = App.get().database.blockedKeywordsDao().getAll()
 
         val fromDigits = from.filter { it.isDigit() }
         val isBlockedByNumber = blockedNumbers.any { bn ->

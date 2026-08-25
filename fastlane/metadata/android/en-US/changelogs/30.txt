@@ -1,0 +1,3 @@
+- Fix: DPAD left and right now move the text cursor and exit at the text boundaries
+- Fix: DPAD down exits the compose field and moves to the Schedule button
+- Improve: Move message, contact, attachment, and MMS processing off the main thread

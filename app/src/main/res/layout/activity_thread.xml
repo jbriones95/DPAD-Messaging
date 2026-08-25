@@ -11,6 +11,7 @@
       • D-Pad DOWN from toolbar → message list (first visible item)
       • D-Pad DOWN from last message → compose bar (et_message gets focus)
       • D-Pad UP from compose bar → message list (last item)
+       • D-Pad DOWN from compose field → schedule button (escape text editing)
       • D-Pad UP from first message → toolbar
       • ENTER in et_message (when sendOnEnter = true) → sends message
 -->
@@ -216,6 +217,7 @@
             android:textSize="@dimen/text_size_normal"
             android:nextFocusLeft="@id/btn_attach"
             android:nextFocusRight="@id/btn_schedule"
+            android:nextFocusDown="@id/btn_schedule"
             android:nextFocusUp="@id/btn_remove_attachment" />
 
         <!-- Character counter (shown when enabled in settings) -->

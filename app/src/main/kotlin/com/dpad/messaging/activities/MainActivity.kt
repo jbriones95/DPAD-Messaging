@@ -309,10 +309,12 @@ class MainActivity : BaseActivity() {
                 )
             }.also { ConversationCache.put(it) }
             val lower = query.lowercase()
-            val filtered = all.filter {
-                it.title.lowercase().contains(lower) ||
-                it.snippet.lowercase().contains(lower) ||
-                it.phoneNumber.contains(lower)
+            val filtered = withContext(Dispatchers.Default) {
+                all.filter {
+                    it.title.lowercase().contains(lower) ||
+                    it.snippet.lowercase().contains(lower) ||
+                    it.phoneNumber.contains(lower)
+                }
             }
             conversationsAdapter.submitList(filtered)
             binding.tvEmpty.visibility = if (filtered.isEmpty()) View.VISIBLE else View.GONE
@@ -368,8 +370,10 @@ class MainActivity : BaseActivity() {
                 }
             }
 
-            val title = recipients.joinToString(", ") {
-                App.get().contactHelper.getDisplayName(it)
+            val title = withContext(Dispatchers.IO) {
+                recipients.joinToString(", ") {
+                    App.get().contactHelper.getDisplayName(it)
+                }
             }
 
             val threadIntent = Intent(this@MainActivity, ThreadActivity::class.java).apply {

@@ -3,4 +3,5 @@
     <!-- Used by FileProvider to share MMS PDU cache files with SmsManager -->
     <cache-path name="mms_pdu" path="mms_pdu/" />
     <cache-path name="camera_capture" path="camera_capture/" />
+    <cache-path name="updates" path="updates/" />
 </paths>
