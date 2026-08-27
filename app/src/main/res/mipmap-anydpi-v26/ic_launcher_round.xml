@@ -6,14 +6,10 @@
         </shape>
     </background>
     <foreground>
-        <vector
-            android:width="108dp"
-            android:height="108dp"
-            android:viewportWidth="108"
-            android:viewportHeight="108">
-            <path
-                android:fillColor="#FFFFFF"
-                android:pathData="M81,27H27C23.69,27 21,29.69 21,33v54l12,-12h48c3.31,0 6,-2.69 6,-6V33C87,29.69 84.31,27 81,27z"/>
-        </vector>
+        <inset android:inset="10dp">
+            <bitmap
+                android:src="@drawable/oxygen_mail_message_new"
+                android:gravity="fill" />
+        </inset>
     </foreground>
 </adaptive-icon>

@@ -1,0 +1,2 @@
+- Add: New KDE Oxygen-based launcher icon for DPAD Messaging
+- Improve: Keep the launcher icon consistent across adaptive and legacy Android launchers
