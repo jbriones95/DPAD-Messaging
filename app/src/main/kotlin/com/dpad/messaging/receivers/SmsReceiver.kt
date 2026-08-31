@@ -4,7 +4,6 @@ import android.content.BroadcastReceiver
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.provider.Telephony
 import android.telephony.SmsMessage
 import android.util.Log
@@ -17,7 +16,6 @@ import com.dpad.messaging.helpers.AppCoroutineScopes
 import com.dpad.messaging.helpers.NotificationHelper
 import kotlinx.coroutines.launch
 import org.greenrobot.eventbus.EventBus
-import androidx.core.net.toUri
 
 /**
  * Receives SMS_DELIVER when the app is the default SMS handler.
@@ -85,17 +83,17 @@ class SmsReceiver : BroadcastReceiver() {
         }
         // ───────────────────────────────────────────────────────────────────────────
 
-        // Resolve (or create) the thread ID for this sender address.
-        val threadId: Long = resolveThreadId(context, address)
-            ?: try {
-                val newId = Telephony.Threads.getOrCreateThreadId(context, address)
-                if (BuildConfig.DEBUG) Log.d("DPAD_MSG", "SmsReceiver: getOrCreateThreadId for '$address' -> $newId")
-                newId
-            } catch (e: Exception) {
-                if (BuildConfig.DEBUG) Log.e("DPAD_MSG", "SmsReceiver: getOrCreateThreadId failed for '$address'", e)
-                return
-            }
-        if (BuildConfig.DEBUG) Log.d("DPAD_MSG", "SmsReceiver.resolveThreadId() -> threadId=$threadId")
+        // The conversation fallback scan was removed because some ROMs make
+        // canonical-address queries extremely slow and can ANR SMS_DELIVER.
+        val threadId: Long = try {
+            val newId = Telephony.Threads.getOrCreateThreadId(context, address)
+            if (BuildConfig.DEBUG) Log.d("DPAD_MSG", "SmsReceiver: getOrCreateThreadId for '$address' -> $newId")
+            newId
+        } catch (e: Exception) {
+            if (BuildConfig.DEBUG) Log.e("DPAD_MSG", "SmsReceiver: getOrCreateThreadId failed for '$address'", e)
+            return
+        }
+        if (BuildConfig.DEBUG) Log.d("DPAD_MSG", "SmsReceiver: resolved threadId=$threadId")
 
         // Insert into Telephony Sms CP so every SMS reader app can see it.
         val cv = ContentValues().apply {
@@ -140,77 +138,4 @@ class SmsReceiver : BroadcastReceiver() {
         EventBus.getDefault().post(RefreshMessages(threadId))
     }
 
-
-    private fun resolveThreadId(context: Context, address: String): Long? {
-        // Try several normalized forms of the address because different carriers/ROMs
-        // store canonical addresses in different formats (e.g. no leading +, no country
-        // code). Try in this order: raw address, digits-only, digits-without-leading-1.
-        val candidates = mutableListOf<String>()
-        candidates.add(address)
-        val digitsOnly = address.filter { it.isDigit() }
-        if (digitsOnly.isNotEmpty() && digitsOnly != address) candidates.add(digitsOnly)
-        if (digitsOnly.startsWith("1") && digitsOnly.length > 10) {
-            val drop1 = digitsOnly.removePrefix("1")
-            if (drop1.isNotEmpty()) candidates.add(drop1)
-        }
-
-        // First, try the fast threadID URI for each candidate.
-        for (cand in candidates) {
-            try {
-                if (BuildConfig.DEBUG) Log.d("DPAD_MSG", "SmsReceiver.resolveThreadId(): querying threadID for candidate='$cand'")
-                val uri = Uri.withAppendedPath(
-                    "content://mms-sms/threadID".toUri(),
-                    Uri.encode(cand)
-                )
-                context.contentResolver.query(uri, arrayOf("_id"), null, null, null)
-                    ?.use { cursor -> if (cursor.moveToFirst()) return cursor.getLong(0) }
-            } catch (e: Exception) {
-                // try next candidate
-            }
-        }
-
-        // Fallback: scan conversations' recipient canonical-address IDs and compare
-        // their stored addresses against our normalized candidates. This is more
-        // expensive but reliable across ROMs that don't support the threadID URI.
-        try {
-            if (BuildConfig.DEBUG) Log.d("DPAD_MSG", "SmsReceiver.resolveThreadId(): fallback scanning conversations for address=$address")
-            val convUri = "content://mms-sms/conversations?simple=true".toUri()
-            val proj = arrayOf(Telephony.Threads._ID, Telephony.Threads.RECIPIENT_IDS)
-            val normalizedCandidates = candidates.map { it.filter { ch -> ch.isDigit() } }.toSet()
-
-            context.contentResolver.query(convUri, proj, null, null, null)?.use { cursor ->
-                val idxId = cursor.getColumnIndex(Telephony.Threads._ID)
-                val idxRecipients = cursor.getColumnIndex(Telephony.Threads.RECIPIENT_IDS)
-                while (cursor.moveToNext()) {
-                    val threadId = cursor.getLong(idxId)
-                    val recipientIds = cursor.getString(idxRecipients) ?: continue
-                    val ids = recipientIds.trim().split(" ").mapNotNull { it.trim().toLongOrNull() }
-                    for (cid in ids) {
-                        try {
-                            val addrUri = "content://mms-sms/canonical-address/$cid".toUri()
-                            val c2 = context.contentResolver.query(addrUri, arrayOf("address"), null, null, null)
-                            c2?.use {
-                                if (it.moveToFirst()) {
-                                    val storedAddr = it.getString(0)
-                                    if (!storedAddr.isNullOrBlank()) {
-                                        val storedDigits = storedAddr.filter { ch -> ch.isDigit() }
-                                        if (storedDigits in normalizedCandidates) {
-                                            if (BuildConfig.DEBUG) Log.d("DPAD_MSG", "SmsReceiver.resolveThreadId(): matched threadId=$threadId via canonical-address id=$cid addr=$storedAddr")
-                                            return threadId
-                                        }
-                                    }
-                                }
-                            }
-                        } catch (e: Exception) {
-                            // ignore and continue
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            // ignore fallback failures
-        }
-
-        return null
-    }
 }
