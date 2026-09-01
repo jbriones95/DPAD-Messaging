@@ -1,0 +1,3 @@
+ - New: Replay recorded voice messages before sending
+ - Improve: Voice attachment preview controls for DPAD navigation
+ - Fix: Voice replay playback now stops cleanly on pause, destroy, or attachment clear

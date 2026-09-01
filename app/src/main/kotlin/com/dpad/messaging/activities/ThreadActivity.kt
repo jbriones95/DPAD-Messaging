@@ -10,6 +10,8 @@ import android.content.ContentUris
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
+import android.media.AudioAttributes
+import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
@@ -105,6 +107,8 @@ class ThreadActivity : BaseActivity() {
     private var isRecordingVoiceMessage = false
     private var recorder: MediaRecorder? = null
     private var recorderOutputFile: File? = null
+    private var previewAudioPlayer: MediaPlayer? = null
+    private var isPreviewAudioPlaying = false
 
     private lateinit var attachmentPickerLauncher: ActivityResultLauncher<Intent>
     private lateinit var permissionRequestLauncher: ActivityResultLauncher<Array<String>>
@@ -272,6 +276,7 @@ class ThreadActivity : BaseActivity() {
     }
 
     override fun onPause() {
+        stopAttachmentReplay()
         if (isRecordingVoiceMessage) {
             stopVoiceRecording(attachResult = false, showFeedback = false)
         }
@@ -282,6 +287,7 @@ class ThreadActivity : BaseActivity() {
     }
 
     override fun onDestroy() {
+        stopAttachmentReplay()
         runCatching { recorder?.release() }
         recorder = null
         recorderOutputFile = null
@@ -352,6 +358,7 @@ class ThreadActivity : BaseActivity() {
         binding.btnAttach.imageTintList = tint
         binding.btnVoiceInput.imageTintList = tint
         binding.btnVoiceRecord.imageTintList = tint
+        binding.btnPlayAttachment.imageTintList = tint
         binding.btnSchedule.imageTintList = tint
         binding.btnSim.setTextColor(accent)
         // btnRemoveAttachment uses its XML fill color — no tinting needed, keeps icon always visible.
@@ -362,6 +369,7 @@ class ThreadActivity : BaseActivity() {
         binding.btnAttach.backgroundTintList = tint
         binding.btnVoiceInput.backgroundTintList = tint
         binding.btnVoiceRecord.backgroundTintList = tint
+        binding.btnPlayAttachment.backgroundTintList = tint
         binding.btnSchedule.backgroundTintList = tint
         binding.btnSend.backgroundTintList = tint
         binding.btnSim.backgroundTintList = tint
@@ -465,7 +473,14 @@ class ThreadActivity : BaseActivity() {
 
         // Attachment preview strip
         binding.btnRemoveAttachment.setOnClickListener { clearAttachment() }
+        binding.btnPlayAttachment.setOnClickListener { toggleAttachmentReplay() }
         binding.btnRemoveAttachment.setOnKeyListener { _, keyCode, event ->
+            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN && event.action == KeyEvent.ACTION_DOWN) {
+                binding.etMessage.requestFocus()
+                true
+            } else false
+        }
+        binding.btnPlayAttachment.setOnKeyListener { _, keyCode, event ->
             if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN && event.action == KeyEvent.ACTION_DOWN) {
                 binding.etMessage.requestFocus()
                 true
@@ -724,6 +739,90 @@ class ThreadActivity : BaseActivity() {
         }
     }
 
+    private fun updateAttachmentReplayUi(isAudioAttachment: Boolean) {
+        binding.btnPlayAttachment.visibility = if (isAudioAttachment) View.VISIBLE else View.GONE
+        binding.btnPlayAttachment.contentDescription = if (isPreviewAudioPlaying) {
+            getString(R.string.voice_replay_stop)
+        } else {
+            getString(R.string.voice_replay)
+        }
+        binding.btnPlayAttachment.setImageResource(if (isPreviewAudioPlaying) R.drawable.ic_close else R.drawable.ic_play)
+        if (isAudioAttachment) {
+            binding.btnRemoveAttachment.nextFocusLeftId = R.id.btn_play_attachment
+            binding.btnRemoveAttachment.nextFocusRightId = R.id.btn_play_attachment
+            binding.btnPlayAttachment.nextFocusLeftId = R.id.btn_remove_attachment
+            binding.btnPlayAttachment.nextFocusRightId = R.id.btn_remove_attachment
+        } else {
+            binding.btnRemoveAttachment.nextFocusLeftId = R.id.btn_remove_attachment
+            binding.btnRemoveAttachment.nextFocusRightId = R.id.btn_remove_attachment
+        }
+    }
+
+    private fun toggleAttachmentReplay() {
+        if (isPreviewAudioPlaying) {
+            stopAttachmentReplay()
+            return
+        }
+
+        val uri = pendingAttachmentUri ?: return
+        val mimeType = AttachmentPolicy.resolveMimeType(this, uri)
+        if (!mimeType.startsWith("audio/")) return
+
+        try {
+            stopAttachmentReplay()
+            val player = MediaPlayer().apply {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build()
+                    )
+                }
+                setDataSource(this@ThreadActivity, uri)
+                setOnCompletionListener {
+                    stopAttachmentReplay()
+                }
+                setOnErrorListener { _, _, _ ->
+                    stopAttachmentReplay()
+                    android.widget.Toast.makeText(
+                        this@ThreadActivity,
+                        R.string.voice_replay_unavailable,
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                    true
+                }
+                prepare()
+                start()
+            }
+            previewAudioPlayer = player
+            isPreviewAudioPlaying = true
+            updateAttachmentReplayUi(isAudioAttachment = true)
+        } catch (e: Exception) {
+            if (BuildConfig.DEBUG) Log.w("DPAD_MSG", "Voice replay failed", e)
+            stopAttachmentReplay()
+            android.widget.Toast.makeText(this, R.string.voice_replay_unavailable, android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun stopAttachmentReplay() {
+        if (previewAudioPlayer != null) {
+            runCatching {
+                previewAudioPlayer?.stop()
+            }
+            runCatching {
+                previewAudioPlayer?.release()
+            }
+        }
+        previewAudioPlayer = null
+        isPreviewAudioPlaying = false
+
+        val hasAudio = pendingAttachmentUri?.let {
+            AttachmentPolicy.resolveMimeType(this, it).startsWith("audio/")
+        } == true
+        updateAttachmentReplayUi(isAudioAttachment = hasAudio)
+    }
+
     // ─── Attachment preview ─────────────────────────────────────────────────
 
     private fun showAttachmentPreview(uri: Uri) {
@@ -737,6 +836,7 @@ class ThreadActivity : BaseActivity() {
                     resolveAttachmentPreviewLabel(uri, mimeType)
                 }
                 binding.tvAttachmentPreviewLabel.text = label
+                updateAttachmentReplayUi(isAudioAttachment = mimeType.startsWith("audio/"))
 
                 when {
                     mimeType.startsWith("image/") -> {
@@ -776,6 +876,7 @@ class ThreadActivity : BaseActivity() {
             if (BuildConfig.DEBUG) Log.w("DPAD_MSG", "showAttachmentPreview: security error for uri=$uri", e)
             binding.attachmentPreviewBar.visibility = View.VISIBLE
             binding.tvAttachmentPreviewLabel.text = getString(R.string.attachment_generic_preview)
+            updateAttachmentReplayUi(isAudioAttachment = false)
             binding.ivAttachmentPreview.setImageResource(R.drawable.ic_attach)
             android.widget.Toast.makeText(this, R.string.error_picking_contact, android.widget.Toast.LENGTH_SHORT).show()
             updateSendButtonState()
@@ -783,6 +884,7 @@ class ThreadActivity : BaseActivity() {
             if (BuildConfig.DEBUG) Log.w("DPAD_MSG", "showAttachmentPreview: unexpected error for uri=$uri", e)
             binding.attachmentPreviewBar.visibility = View.VISIBLE
             binding.tvAttachmentPreviewLabel.text = getString(R.string.attachment_generic_preview)
+            updateAttachmentReplayUi(isAudioAttachment = false)
             binding.ivAttachmentPreview.setImageResource(R.drawable.ic_attach)
             updateSendButtonState()
         }
@@ -823,11 +925,13 @@ class ThreadActivity : BaseActivity() {
 
     private fun clearAttachment(deleteTempFiles: Boolean = true) {
         val voiceFile = pendingVoiceAttachmentFile
+        stopAttachmentReplay()
         pendingAttachmentUri = null
         pendingAttachmentUris.clear()
         pendingVoiceAttachmentFile = null
         binding.attachmentPreviewBar.visibility = View.GONE
         binding.tvAttachmentPreviewLabel.text = ""
+        binding.btnPlayAttachment.visibility = View.GONE
         Glide.with(this).clear(binding.ivAttachmentPreview)
         if (deleteTempFiles) {
             lifecycleScope.launch(Dispatchers.IO) {

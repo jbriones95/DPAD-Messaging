@@ -225,6 +225,9 @@
     <string name="voice_recording_stopped">Voice message attached</string>
     <string name="voice_recording_error">Could not record voice message.</string>
     <string name="voice_recording_too_large">Voice message is too large for MMS.</string>
+    <string name="voice_replay">Replay voice message</string>
+    <string name="voice_replay_stop">Stop voice replay</string>
+    <string name="voice_replay_unavailable">Could not play the recorded voice message.</string>
     <string name="attachment_too_large_generic">Attachment is too large for MMS.</string>
     <string name="audio_attachment_preview">Audio attachment preview</string>
     <string name="attachment_audio_preview">Audio attachment</string>

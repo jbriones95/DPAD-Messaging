@@ -137,6 +137,22 @@
             android:textColor="@color/composeInputText"
             android:textSize="@dimen/text_size_small" />
 
+        <ImageButton
+            android:id="@+id/btn_play_attachment"
+            android:layout_width="@dimen/compose_button_size"
+            android:layout_height="@dimen/compose_button_size"
+            android:layout_marginStart="@dimen/padding_tiny"
+            android:background="@drawable/button_focusable_bg"
+            android:contentDescription="@string/voice_replay"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:src="@drawable/ic_play"
+            android:visibility="gone"
+            android:nextFocusUp="@id/rv_messages"
+            android:nextFocusDown="@id/et_message"
+            android:nextFocusLeft="@id/btn_remove_attachment"
+            android:nextFocusRight="@id/btn_remove_attachment" />
+
         <!-- Remove-attachment button -->
         <ImageButton
             android:id="@+id/btn_remove_attachment"
@@ -150,8 +166,8 @@
             android:src="@drawable/ic_close"
             android:nextFocusUp="@id/rv_messages"
             android:nextFocusDown="@id/chips_container"
-            android:nextFocusLeft="@id/btn_remove_attachment"
-            android:nextFocusRight="@id/btn_remove_attachment" />
+            android:nextFocusLeft="@id/btn_play_attachment"
+            android:nextFocusRight="@id/btn_play_attachment" />
 
     </LinearLayout>
 
