@@ -5,9 +5,5 @@
             <solid android:color="@color/colorPrimary" />
         </shape>
     </item>
-    <item android:gravity="center">
-        <bitmap
-            android:src="@drawable/ic_logo_foreground"
-            android:gravity="center" />
-    </item>
+    <item android:drawable="@drawable/ic_logo_foreground" android:gravity="center" />
 </layer-list>
