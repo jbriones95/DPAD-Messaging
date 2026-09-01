@@ -6,10 +6,10 @@
         </shape>
     </background>
     <foreground>
-        <inset android:inset="10dp">
+        <inset android:inset="12dp">
             <bitmap
-                android:src="@drawable/oxygen_mail_message_new"
-                android:gravity="fill" />
+                android:src="@drawable/ic_logo_foreground"
+                android:gravity="center" />
         </inset>
     </foreground>
 </adaptive-icon>

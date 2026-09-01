@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Simplified paper-plane / send glyph — high-contrast white for legibility -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M20,80 L84,54 L20,28 L36,54 L20,80 Z" />
+
+    <!-- Optional subtle cut to suggest fold (slightly transparent) -->
+    <path
+        android:fillColor="#33FFFFFF"
+        android:pathData="M36,54 L84,54 L36,28 Z" />
+
+</vector>
