@@ -2,18 +2,18 @@
 <!--
     Message thread screen.
 
-    Focus zones (D-Pad traversal order, top → bottom):
+    Focus zones (D-Pad traversal order, top -> bottom):
       1. Toolbar (btn_back, tv_contact_name [not focusable], btn_call, btn_details)
       2. DpadRecyclerView (message bubbles — selectable for copy/forward in Phase 4)
-      3. Compose bar (btn_attach, et_message, btn_send)
+      3. Compose bar (btn_attach, btn_voice_input, btn_voice_record, et_message, btn_send)
 
     Key D-Pad behaviours:
-      • D-Pad DOWN from toolbar → message list (first visible item)
-      • D-Pad DOWN from last message → compose bar (et_message gets focus)
-      • D-Pad UP from compose bar → message list (last item)
-       • D-Pad DOWN from compose field → schedule button (escape text editing)
-      • D-Pad UP from first message → toolbar
-      • ENTER in et_message (when sendOnEnter = true) → sends message
+      - D-Pad DOWN from toolbar -> message list (first visible item)
+      - D-Pad DOWN from last message -> compose bar (et_message gets focus)
+      - D-Pad UP from compose bar -> message list (last item)
+      - D-Pad DOWN from compose field -> schedule button (escape text editing)
+      - D-Pad UP from first message -> toolbar
+      - ENTER in et_message (when sendOnEnter = true) -> sends message
 -->
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
@@ -98,7 +98,7 @@
         android:paddingBottom="@dimen/padding_small"
         android:scrollbars="vertical" />
 
-    <!-- ─── Attachment Preview Bar (GONE until an image is selected) ──────── -->
+    <!-- ─── Attachment Preview Bar (GONE until an attachment is selected) ───── -->
     <!--
         Layout order: rv_messages → attachment_preview_bar → compose_bar.
         When visible, D-Pad DOWN from the last message in rv_messages will
@@ -125,6 +125,17 @@
             android:contentDescription="@string/image_attachment_preview"
             android:focusable="false"
             android:scaleType="centerCrop" />
+
+        <TextView
+            android:id="@+id/tv_attachment_preview_label"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="@dimen/padding_small"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/composeInputText"
+            android:textSize="@dimen/text_size_small" />
 
         <!-- Remove-attachment button -->
         <ImageButton
@@ -189,6 +200,34 @@
             android:focusableInTouchMode="true"
             android:src="@drawable/ic_attach"
             android:nextFocusLeft="@id/btn_send"
+            android:nextFocusRight="@id/btn_voice_input"
+            android:nextFocusUp="@id/chips_container_scroll" />
+
+        <ImageButton
+            android:id="@+id/btn_voice_input"
+            android:layout_width="@dimen/compose_button_size"
+            android:layout_height="@dimen/compose_button_size"
+            android:layout_marginStart="@dimen/padding_tiny"
+            android:background="@drawable/button_focusable_bg"
+            android:contentDescription="@string/voice_input"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:src="@drawable/ic_mic"
+            android:nextFocusLeft="@id/btn_attach"
+            android:nextFocusRight="@id/btn_voice_record"
+            android:nextFocusUp="@id/chips_container_scroll" />
+
+        <ImageButton
+            android:id="@+id/btn_voice_record"
+            android:layout_width="@dimen/compose_button_size"
+            android:layout_height="@dimen/compose_button_size"
+            android:layout_marginStart="@dimen/padding_tiny"
+            android:background="@drawable/button_focusable_bg"
+            android:contentDescription="@string/voice_record"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:src="@drawable/ic_waveform"
+            android:nextFocusLeft="@id/btn_voice_input"
             android:nextFocusRight="@id/et_message"
             android:nextFocusUp="@id/chips_container_scroll" />
 
@@ -215,7 +254,7 @@
             android:textColor="@color/composeInputText"
             android:textColorHint="@color/composeHint"
             android:textSize="@dimen/text_size_normal"
-            android:nextFocusLeft="@id/btn_attach"
+            android:nextFocusLeft="@id/btn_voice_record"
             android:nextFocusRight="@id/btn_schedule"
             android:nextFocusDown="@id/btn_schedule"
             android:nextFocusUp="@id/btn_remove_attachment" />

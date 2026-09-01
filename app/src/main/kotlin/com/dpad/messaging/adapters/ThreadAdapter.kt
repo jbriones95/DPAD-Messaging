@@ -1,6 +1,8 @@
 package com.dpad.messaging.adapters
 
 import android.content.Intent
+import android.widget.ImageView
+import android.widget.Toast
 import android.net.Uri
 import android.view.LayoutInflater
 import android.view.View
@@ -16,9 +18,11 @@ import com.dpad.messaging.databinding.ItemMessageReceivedBinding
 import com.dpad.messaging.databinding.ItemMessageSendingBinding
 import com.dpad.messaging.databinding.ItemMessageSentBinding
 import com.dpad.messaging.databinding.ItemThreadDateBinding
+import com.dpad.messaging.helpers.AttachmentPolicy
 import com.dpad.messaging.helpers.Prefs
 import com.dpad.messaging.models.Message
 import com.dpad.messaging.models.ThreadItem
+import org.json.JSONArray
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -141,24 +145,11 @@ class ThreadAdapter(
             } else {
                 binding.tvStatus.visibility = View.GONE
             }
-            // MMS image attachment
-            if (message.isMms && message.attachmentsJson.startsWith("content://")) {
-                binding.ivAttachment.visibility = View.VISIBLE
-                val attachmentUri = message.attachmentsJson
-                loadAttachment(binding.ivAttachment, attachmentUri)
-                binding.ivAttachment.isFocusable = true
-                binding.ivAttachment.isFocusableInTouchMode = true
-                binding.ivAttachment.isClickable = true
-                binding.ivAttachment.setOnClickListener { openImageViewer(binding.root.context, attachmentUri) }
-                binding.bubbleContainer.setOnClickListener { openImageViewer(binding.root.context, attachmentUri) }
-            } else {
-                binding.ivAttachment.visibility = View.GONE
-                binding.ivAttachment.isFocusable = false
-                binding.ivAttachment.isFocusableInTouchMode = false
-                binding.ivAttachment.isClickable = false
-                binding.ivAttachment.setOnClickListener(null)
-                binding.bubbleContainer.setOnClickListener(null)
-            }
+            bindMessageAttachment(
+                message = message,
+                imageView = binding.ivAttachment,
+                bubbleContainer = binding.bubbleContainer
+            )
             binding.bubbleContainer.setOnLongClickListener {
                 onMessageLongClick(message)
                 true
@@ -180,24 +171,11 @@ class ThreadAdapter(
             } else {
                 binding.tvSenderName.visibility = View.GONE
             }
-            // MMS image attachment
-            if (message.isMms && message.attachmentsJson.startsWith("content://")) {
-                binding.ivAttachment.visibility = View.VISIBLE
-                val attachmentUri = message.attachmentsJson
-                loadAttachment(binding.ivAttachment, attachmentUri)
-                binding.ivAttachment.isFocusable = true
-                binding.ivAttachment.isFocusableInTouchMode = true
-                binding.ivAttachment.isClickable = true
-                binding.ivAttachment.setOnClickListener { openImageViewer(binding.root.context, attachmentUri) }
-                binding.bubbleContainer.setOnClickListener { openImageViewer(binding.root.context, attachmentUri) }
-            } else {
-                binding.ivAttachment.visibility = View.GONE
-                binding.ivAttachment.isFocusable = false
-                binding.ivAttachment.isFocusableInTouchMode = false
-                binding.ivAttachment.isClickable = false
-                binding.ivAttachment.setOnClickListener(null)
-                binding.bubbleContainer.setOnClickListener(null)
-            }
+            bindMessageAttachment(
+                message = message,
+                imageView = binding.ivAttachment,
+                bubbleContainer = binding.bubbleContainer
+            )
             binding.bubbleContainer.setOnLongClickListener {
                 onMessageLongClick(message)
                 true
@@ -225,23 +203,11 @@ class ThreadAdapter(
                 binding.tvState.text = binding.root.context.getString(R.string.sending)
             }
 
-            if (message.isMms && message.attachmentsJson.startsWith("content://")) {
-                binding.ivAttachment.visibility = View.VISIBLE
-                val attachmentUri = message.attachmentsJson
-                loadAttachment(binding.ivAttachment, attachmentUri)
-                binding.ivAttachment.isFocusable = true
-                binding.ivAttachment.isFocusableInTouchMode = true
-                binding.ivAttachment.isClickable = true
-                binding.ivAttachment.setOnClickListener { openImageViewer(binding.root.context, attachmentUri) }
-                binding.bubbleContainer.setOnClickListener { openImageViewer(binding.root.context, attachmentUri) }
-            } else {
-                binding.ivAttachment.visibility = View.GONE
-                binding.ivAttachment.isFocusable = false
-                binding.ivAttachment.isFocusableInTouchMode = false
-                binding.ivAttachment.isClickable = false
-                binding.ivAttachment.setOnClickListener(null)
-                binding.bubbleContainer.setOnClickListener(null)
-            }
+            bindMessageAttachment(
+                message = message,
+                imageView = binding.ivAttachment,
+                bubbleContainer = binding.bubbleContainer
+            )
 
             binding.bubbleContainer.setOnLongClickListener {
                 onMessageLongClick(message)
@@ -254,6 +220,110 @@ class ThreadAdapter(
         val intent = Intent(context, ImageViewerActivity::class.java)
             .putExtra(ImageViewerActivity.EXTRA_IMAGE_URI, attachmentUri)
         context.startActivity(intent)
+    }
+
+    private fun openAttachment(context: android.content.Context, uriString: String, mimeType: String) {
+        val uri = Uri.parse(uriString)
+        val type = when {
+            mimeType.isNotBlank() -> mimeType
+            uriString.endsWith(".m4a", ignoreCase = true) -> "audio/mp4"
+            uriString.endsWith(".mp3", ignoreCase = true) -> "audio/mpeg"
+            uriString.endsWith(".wav", ignoreCase = true) -> "audio/wav"
+            else -> "*/*"
+        }
+
+        val intent = Intent(Intent.ACTION_VIEW)
+            .setDataAndType(uri, type)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+        try {
+            context.startActivity(intent)
+        } catch (_: Exception) {
+            val messageRes = if (type.startsWith("audio/")) {
+                R.string.audio_playback_unavailable
+            } else {
+                R.string.attachment_open_unavailable
+            }
+            Toast.makeText(context, messageRes, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun bindMessageAttachment(
+        message: Message,
+        imageView: ImageView,
+        bubbleContainer: View
+    ) {
+        if (!message.isMms) {
+            hideAttachment(imageView, bubbleContainer)
+            return
+        }
+
+        val attachmentUri = extractFirstAttachmentUri(message.attachmentsJson)
+        if (attachmentUri.isNullOrBlank()) {
+            hideAttachment(imageView, bubbleContainer)
+            return
+        }
+
+        val context = imageView.context
+        val mimeType = runCatching {
+            AttachmentPolicy.resolveMimeType(context, Uri.parse(attachmentUri))
+        }.getOrDefault("")
+
+        val isImage = mimeType.startsWith("image/")
+        val isAudio = mimeType.startsWith("audio/") ||
+            message.body.startsWith("audio/") ||
+            attachmentUri.endsWith(".m4a", ignoreCase = true) ||
+            attachmentUri.endsWith(".mp3", ignoreCase = true) ||
+            attachmentUri.endsWith(".wav", ignoreCase = true)
+
+        imageView.visibility = View.VISIBLE
+        imageView.isFocusable = true
+        imageView.isFocusableInTouchMode = true
+        imageView.isClickable = true
+
+        if (isImage) {
+            imageView.scaleType = ImageView.ScaleType.CENTER_CROP
+            loadAttachment(imageView, attachmentUri)
+            imageView.setOnClickListener { openImageViewer(context, attachmentUri) }
+            bubbleContainer.setOnClickListener { openImageViewer(context, attachmentUri) }
+            return
+        }
+
+        Glide.with(imageView).clear(imageView)
+        imageView.scaleType = ImageView.ScaleType.CENTER_INSIDE
+        imageView.setImageResource(if (isAudio) R.drawable.ic_mic else R.drawable.ic_attach)
+        val openMimeType = when {
+            mimeType.isNotBlank() -> mimeType
+            isAudio -> "audio/*"
+            else -> "*/*"
+        }
+        imageView.setOnClickListener { openAttachment(context, attachmentUri, openMimeType) }
+        bubbleContainer.setOnClickListener { openAttachment(context, attachmentUri, openMimeType) }
+    }
+
+    private fun hideAttachment(imageView: ImageView, bubbleContainer: View) {
+        imageView.visibility = View.GONE
+        imageView.isFocusable = false
+        imageView.isFocusableInTouchMode = false
+        imageView.isClickable = false
+        imageView.setOnClickListener(null)
+        bubbleContainer.setOnClickListener(null)
+    }
+
+    private fun extractFirstAttachmentUri(raw: String): String? {
+        val value = raw.trim()
+        if (value.isBlank() || value == "[]") return null
+        if (!value.startsWith("[")) return value
+
+        return runCatching {
+            val array = JSONArray(value)
+            for (index in 0 until array.length()) {
+                val candidate = array.optString(index).trim()
+                if (candidate.isNotBlank()) return@runCatching candidate
+            }
+            ""
+        }.getOrDefault("").ifBlank { null }
     }
 
     private fun loadAttachment(imageView: android.widget.ImageView, attachmentUri: String) {

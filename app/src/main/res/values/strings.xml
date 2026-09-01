@@ -125,6 +125,7 @@
     <string name="ui_scale_large">Large</string>
     <string name="ui_scale_xlarge">Extra Large</string>
     <string name="attach_image_audio">Image / Audio</string>
+    <string name="attach_voice_message">Voice message</string>
     <string name="attach_contact">Contact</string>
     <string name="attach_camera">Camera</string>
     <string name="messaging">Messaging</string>
@@ -215,6 +216,22 @@
     <string name="tap_to_remove_number">Tap to remove number: %s</string>
     <string name="choose_attachment_app">Choose app</string>
     <string name="scheduled_message_canceled">Scheduled message canceled</string>
+    <string name="voice_input">Voice input</string>
+    <string name="voice_record">Record voice message</string>
+    <string name="voice_record_stop">Stop recording</string>
+    <string name="voice_input_unavailable">Voice input is unavailable on this device.</string>
+    <string name="voice_input_empty_result">No speech was detected.</string>
+    <string name="voice_recording_started">Recording voice message…</string>
+    <string name="voice_recording_stopped">Voice message attached</string>
+    <string name="voice_recording_error">Could not record voice message.</string>
+    <string name="voice_recording_too_large">Voice message is too large for MMS.</string>
+    <string name="attachment_too_large_generic">Attachment is too large for MMS.</string>
+    <string name="audio_attachment_preview">Audio attachment preview</string>
+    <string name="attachment_audio_preview">Audio attachment</string>
+    <string name="attachment_generic_preview">Attachment ready</string>
+    <string name="attachment_permission_needed">Storage permission is required to attach files.</string>
+    <string name="audio_playback_unavailable">No app can play this audio attachment.</string>
+    <string name="attachment_open_unavailable">No app can open this attachment.</string>
 
     <!-- Schedule picker labels -->
     <string name="schedule_year">Year</string>

@@ -47,6 +47,14 @@ object MmsHelper {
     }
 
     /**
+     * Returns the content URI string of the first audio part found in the MMS message,
+     * e.g. "content://mms/part/42", or null if there is no audio part.
+     */
+    fun getMmsAudioPartUri(context: Context, msgId: Long): String? {
+        return getCachedParts(context, msgId).audioPartUri
+    }
+
+    /**
      * Returns the MIME type of the first non-text, non-image, non-SMIL part, or an
      * empty string if all parts are accounted for by text/images.
      * Useful for showing e.g. "audio/mpeg" or "video/mp4" as a fallback label.
@@ -78,6 +86,7 @@ object MmsHelper {
 
         var textBody = ""
         var imagePartUri: String? = null
+        var audioPartUri: String? = null
         var attachmentLabel = ""
 
         val partsUri = Uri.parse("content://mms/$msgId/part")
@@ -105,6 +114,11 @@ object MmsHelper {
                         imagePartUri = "content://mms/part/$partId"
                     }
 
+                    if (audioPartUri == null && ct.lowercase().startsWith("audio/")) {
+                        val partId = cursor.getLong(idxId)
+                        audioPartUri = "content://mms/part/$partId"
+                    }
+
                     if (attachmentLabel.isBlank() && !ct.isImageMimeType() && ct !in SKIP_MIME_TYPES) {
                         attachmentLabel = if (ct.isVcardMimeType() && idxId >= 0) {
                             val partId = cursor.getLong(idxId)
@@ -124,6 +138,7 @@ object MmsHelper {
         return MmsPartCache.CachedParts(
             textBody = textBody,
             imagePartUri = imagePartUri,
+            audioPartUri = audioPartUri,
             attachmentLabel = attachmentLabel
         ).also { MmsPartCache.put(msgId, it) }
     }

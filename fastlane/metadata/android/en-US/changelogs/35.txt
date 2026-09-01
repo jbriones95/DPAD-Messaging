@@ -1,0 +1,4 @@
+ - New: Speech-to-text dictation button in conversation compose
+ - New: Voice message recording button with MMS audio attachment support
+ - Improve: MMS attachment preview/playback now supports audio and generic files better
+ - Improve: Attachment size guardrails to prevent oversized MMS sends

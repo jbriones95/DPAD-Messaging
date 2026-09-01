@@ -11,6 +11,7 @@ import com.dpad.messaging.App
 import com.dpad.messaging.R
 import com.dpad.messaging.events.RefreshConversations
 import com.dpad.messaging.events.RefreshMessages
+import com.dpad.messaging.helpers.AttachmentPolicy
 import com.dpad.messaging.helpers.AppCoroutineScopes
 import com.dpad.messaging.helpers.MessageSenders
 import com.dpad.messaging.helpers.ThemeManager
@@ -55,6 +56,13 @@ class ScheduledMessageReceiver : BroadcastReceiver() {
                         }
                         val attachments = parseJsonArray(message.attachmentsJson)
                             .mapNotNull { runCatching { Uri.parse(it) }.getOrNull() }
+
+                        val oversized = attachments.firstOrNull {
+                            !AttachmentPolicy.isWithinMmsLimit(context, it)
+                        }
+                        if (oversized != null) {
+                            throw IllegalStateException("Scheduled MMS attachment exceeds size policy")
+                        }
 
                         MessageSenders.unified.sendMms(
                             context = context,

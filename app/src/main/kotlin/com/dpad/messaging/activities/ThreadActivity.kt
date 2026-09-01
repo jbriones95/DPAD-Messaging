@@ -3,17 +3,22 @@ package com.dpad.messaging.activities
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.ContentUris
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
+import android.media.MediaRecorder
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.ContactsContract
 import android.provider.MediaStore
+import android.provider.OpenableColumns
 import android.provider.Telephony
+import android.speech.RecognizerIntent
 import android.telephony.SubscriptionManager
 import android.text.Editable
 import android.text.TextWatcher
@@ -23,14 +28,12 @@ import android.view.View
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.PopupMenu
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.bumptech.glide.Glide
-import com.bumptech.glide.request.target.Target
 import com.dpad.messaging.App
 import com.dpad.messaging.BuildConfig
 import com.dpad.messaging.R
@@ -39,15 +42,15 @@ import com.dpad.messaging.databinding.ActivityThreadBinding
 import com.dpad.messaging.events.RefreshMessages
 import com.dpad.messaging.extensions.getMessagesForThread
 import com.dpad.messaging.extensions.markThreadAsReadInTelephony
+import com.dpad.messaging.helpers.AttachmentPolicy
 import com.dpad.messaging.helpers.MessageCache
-import com.dpad.messaging.helpers.MmsSender
+import com.dpad.messaging.helpers.MessageSenders
 import com.dpad.messaging.helpers.NotificationHelper
 import com.dpad.messaging.helpers.Prefs
 import com.dpad.messaging.helpers.ScheduledMessageScheduler
 import com.dpad.messaging.helpers.SendingMode
 import com.dpad.messaging.helpers.SendingRouter
 import com.dpad.messaging.helpers.ThemeManager
-import com.dpad.messaging.helpers.MessageSenders
 import com.dpad.messaging.helpers.SmsWhitelistManager
 import com.dpad.messaging.models.Message
 import com.dpad.messaging.models.RecycleBinMessage
@@ -62,10 +65,17 @@ import org.greenrobot.eventbus.ThreadMode
 import java.io.File
 import java.text.DateFormat
 import java.util.Calendar
+import java.util.Locale
 import kotlin.math.max
 import kotlin.math.min
 
 class ThreadActivity : BaseActivity() {
+
+    private enum class PendingPermissionAction {
+        ATTACHMENT_PICKER,
+        SPEECH_INPUT,
+        VOICE_RECORDING
+    }
 
     private lateinit var binding: ActivityThreadBinding
     private lateinit var threadAdapter: ThreadAdapter
@@ -85,14 +95,20 @@ class ThreadActivity : BaseActivity() {
      */
     private var simEntries: List<Pair<Int, String>> = emptyList()
 
-    /** URI of the image the user has selected but not yet sent. Null when no pending attachment. */
+    /** URI of the attachment the user has selected but not yet sent. Null when no pending attachment. */
     private var pendingAttachmentUri: Uri? = null
     private val pendingAttachmentUris = mutableListOf<Uri>()
+    private var pendingVoiceAttachmentFile: File? = null
     private var pendingCameraUri: Uri? = null
     private var pendingScheduledAtMillis: Long? = null
+    private var pendingPermissionAction: PendingPermissionAction? = null
+    private var isRecordingVoiceMessage = false
+    private var recorder: MediaRecorder? = null
+    private var recorderOutputFile: File? = null
 
     private lateinit var attachmentPickerLauncher: ActivityResultLauncher<Intent>
     private lateinit var permissionRequestLauncher: ActivityResultLauncher<Array<String>>
+    private lateinit var speechInputLauncher: ActivityResultLauncher<Intent>
     private lateinit var contactPickerLauncher: ActivityResultLauncher<Void?>
     private lateinit var cameraCaptureLauncher: ActivityResultLauncher<Uri>
     private var hasInitializedList = false
@@ -117,10 +133,41 @@ class ThreadActivity : BaseActivity() {
         ) { result ->
             val granted = result.values.all { it }
             if (granted) {
-                launchAttachmentPickerChooser()
+                when (pendingPermissionAction) {
+                    PendingPermissionAction.ATTACHMENT_PICKER -> launchAttachmentPickerChooser()
+                    PendingPermissionAction.SPEECH_INPUT -> launchSpeechInput()
+                    PendingPermissionAction.VOICE_RECORDING -> toggleVoiceRecording()
+                    null -> Unit
+                }
             } else {
-                android.widget.Toast.makeText(this, R.string.permission_denied, android.widget.Toast.LENGTH_SHORT).show()
+                val messageRes = when (pendingPermissionAction) {
+                    PendingPermissionAction.ATTACHMENT_PICKER -> R.string.attachment_permission_needed
+                    PendingPermissionAction.SPEECH_INPUT,
+                    PendingPermissionAction.VOICE_RECORDING,
+                    null -> R.string.permission_denied
+                }
+                android.widget.Toast.makeText(this, messageRes, android.widget.Toast.LENGTH_SHORT).show()
             }
+            pendingPermissionAction = null
+        }
+
+        speechInputLauncher = registerForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+        ) { result ->
+            if (result.resultCode != Activity.RESULT_OK) return@registerForActivityResult
+            val matches = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS).orEmpty()
+            val spoken = matches.firstOrNull()?.trim().orEmpty()
+            if (spoken.isBlank()) {
+                android.widget.Toast.makeText(this, R.string.voice_input_empty_result, android.widget.Toast.LENGTH_SHORT).show()
+                return@registerForActivityResult
+            }
+            val editable = binding.etMessage.text ?: return@registerForActivityResult
+            val needsSpace = editable.isNotEmpty() && !editable.last().isWhitespace()
+            val prefix = if (needsSpace) " " else ""
+            val insertionPoint = binding.etMessage.selectionEnd.coerceIn(0, editable.length)
+            editable.insert(insertionPoint, "$prefix$spoken")
+            binding.etMessage.requestFocus()
+            binding.etMessage.setSelection(editable.length)
         }
 
         // Register before setupComposeBar() (must be called before onStart)
@@ -137,10 +184,7 @@ class ThreadActivity : BaseActivity() {
                 } catch (_: Exception) {
                     // Not all providers offer persistable permissions.
                 }
-                pendingAttachmentUri = uri
-                pendingAttachmentUris.clear()
-                pendingAttachmentUris.add(uri)
-                showAttachmentPreview(uri)
+                setPendingAttachment(uri)
             }
         }
 
@@ -167,10 +211,7 @@ class ThreadActivity : BaseActivity() {
                         }
                     }
                     if (vCardUri != null) {
-                        pendingAttachmentUri = vCardUri
-                        pendingAttachmentUris.clear()
-                        pendingAttachmentUris.add(vCardUri)
-                        showAttachmentPreview(vCardUri)
+                        setPendingAttachment(vCardUri)
                     }
                 }
             }
@@ -188,10 +229,7 @@ class ThreadActivity : BaseActivity() {
                         if (isAttachmentReadable(uri)) uri else findLatestCameraImage()
                     }
                     if (target != null) {
-                        pendingAttachmentUri = target
-                        pendingAttachmentUris.clear()
-                        pendingAttachmentUris.add(target)
-                        showAttachmentPreview(target)
+                        setPendingAttachment(target)
                     } else {
                         withContext(Dispatchers.IO) {
                             runCatching { contentResolver.delete(uri, null, null) }
@@ -234,10 +272,21 @@ class ThreadActivity : BaseActivity() {
     }
 
     override fun onPause() {
+        if (isRecordingVoiceMessage) {
+            stopVoiceRecording(attachResult = false, showFeedback = false)
+        }
         markThreadRead()
         saveDraft()
         EventBus.getDefault().unregister(this)
         super.onPause()
+    }
+
+    override fun onDestroy() {
+        runCatching { recorder?.release() }
+        recorder = null
+        recorderOutputFile = null
+        isRecordingVoiceMessage = false
+        super.onDestroy()
     }
 
     // ─── Setup ─────────────────────────────────────────────────────────────
@@ -301,6 +350,8 @@ class ThreadActivity : BaseActivity() {
         binding.btnCall.imageTintList = tint
         binding.btnDetails.imageTintList = tint
         binding.btnAttach.imageTintList = tint
+        binding.btnVoiceInput.imageTintList = tint
+        binding.btnVoiceRecord.imageTintList = tint
         binding.btnSchedule.imageTintList = tint
         binding.btnSim.setTextColor(accent)
         // btnRemoveAttachment uses its XML fill color — no tinting needed, keeps icon always visible.
@@ -309,10 +360,13 @@ class ThreadActivity : BaseActivity() {
         binding.btnCall.backgroundTintList = tint
         binding.btnDetails.backgroundTintList = tint
         binding.btnAttach.backgroundTintList = tint
+        binding.btnVoiceInput.backgroundTintList = tint
+        binding.btnVoiceRecord.backgroundTintList = tint
         binding.btnSchedule.backgroundTintList = tint
         binding.btnSend.backgroundTintList = tint
         binding.btnSim.backgroundTintList = tint
 
+        updateVoiceRecordUi()
         updateSendButtonState()
     }
 
@@ -368,6 +422,16 @@ class ThreadActivity : BaseActivity() {
                 goUpFromCompose(); true
             } else false
         }
+        binding.btnVoiceInput.setOnKeyListener { _, keyCode, event ->
+            if (keyCode == KeyEvent.KEYCODE_DPAD_UP && event.action == KeyEvent.ACTION_DOWN) {
+                goUpFromCompose(); true
+            } else false
+        }
+        binding.btnVoiceRecord.setOnKeyListener { _, keyCode, event ->
+            if (keyCode == KeyEvent.KEYCODE_DPAD_UP && event.action == KeyEvent.ACTION_DOWN) {
+                goUpFromCompose(); true
+            } else false
+        }
         binding.btnSend.setOnKeyListener { _, keyCode, event ->
             when {
                 keyCode == KeyEvent.KEYCODE_DPAD_UP && event.action == KeyEvent.ACTION_DOWN -> {
@@ -396,6 +460,8 @@ class ThreadActivity : BaseActivity() {
         }
         binding.btnSim.setOnClickListener { showSimPicker() }
         binding.btnSchedule.setOnClickListener { showScheduleOptions() }
+        binding.btnVoiceInput.setOnClickListener { launchSpeechInputWithPermission() }
+        binding.btnVoiceRecord.setOnClickListener { toggleVoiceRecordingWithPermission() }
 
         // Attachment preview strip
         binding.btnRemoveAttachment.setOnClickListener { clearAttachment() }
@@ -437,23 +503,15 @@ class ThreadActivity : BaseActivity() {
             popup.menu.add(0, 1, 0, getString(R.string.attach_image_audio))
             popup.menu.add(0, 2, 0, getString(R.string.attach_contact))
             popup.menu.add(0, 3, 0, getString(R.string.attach_camera))
+            popup.menu.add(0, 4, 0, getString(R.string.attach_voice_message))
             popup.setOnMenuItemClickListener { item ->
                 when (item.itemId) {
                     1 -> {
-                        // Ensure we have runtime permission to read external media (Android 13+)
-                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                            permissionRequestLauncher.launch(arrayOf(
-                                android.Manifest.permission.READ_MEDIA_IMAGES,
-                                android.Manifest.permission.READ_MEDIA_AUDIO
-                            ))
-                        } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                            permissionRequestLauncher.launch(arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE))
-                        } else {
-                            launchAttachmentPickerChooser()
-                        }
+                        launchAttachmentPickerWithPermission()
                     }
                     2 -> contactPickerLauncher.launch(null)
                     3 -> launchCameraAttachment()
+                    4 -> toggleVoiceRecordingWithPermission()
                 }
                 true
             }
@@ -476,6 +534,196 @@ class ThreadActivity : BaseActivity() {
         updateScheduledUi()
     }
 
+    private fun launchAttachmentPickerWithPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            requestPermissionsForAction(
+                PendingPermissionAction.ATTACHMENT_PICKER,
+                arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_AUDIO)
+            )
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            requestPermissionsForAction(
+                PendingPermissionAction.ATTACHMENT_PICKER,
+                arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+            )
+            return
+        }
+        launchAttachmentPickerChooser()
+    }
+
+    private fun launchSpeechInputWithPermission() {
+        if (isRecordingVoiceMessage) {
+            android.widget.Toast.makeText(this, R.string.voice_record_stop, android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        requestPermissionsForAction(
+            PendingPermissionAction.SPEECH_INPUT,
+            arrayOf(Manifest.permission.RECORD_AUDIO)
+        )
+    }
+
+    private fun toggleVoiceRecordingWithPermission() {
+        if (isRecordingVoiceMessage) {
+            toggleVoiceRecording()
+            return
+        }
+        requestPermissionsForAction(
+            PendingPermissionAction.VOICE_RECORDING,
+            arrayOf(Manifest.permission.RECORD_AUDIO)
+        )
+    }
+
+    private fun requestPermissionsForAction(
+        action: PendingPermissionAction,
+        permissions: Array<String>
+    ) {
+        if (permissions.all {
+                ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+            }) {
+            pendingPermissionAction = action
+            when (action) {
+                PendingPermissionAction.ATTACHMENT_PICKER -> launchAttachmentPickerChooser()
+                PendingPermissionAction.SPEECH_INPUT -> launchSpeechInput()
+                PendingPermissionAction.VOICE_RECORDING -> toggleVoiceRecording()
+            }
+            pendingPermissionAction = null
+            return
+        }
+        pendingPermissionAction = action
+        permissionRequestLauncher.launch(permissions)
+    }
+
+    private fun launchSpeechInput() {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
+        }
+        try {
+            speechInputLauncher.launch(intent)
+        } catch (_: ActivityNotFoundException) {
+            android.widget.Toast.makeText(this, R.string.voice_input_unavailable, android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun toggleVoiceRecording() {
+        if (isRecordingVoiceMessage) {
+            stopVoiceRecording(attachResult = true)
+        } else {
+            startVoiceRecording()
+        }
+    }
+
+    private fun startVoiceRecording() {
+        if (isRecordingVoiceMessage) return
+
+        val outputFile = File(filesDir, "voice_messages/thread_${threadId}_${System.currentTimeMillis()}.m4a")
+        outputFile.parentFile?.mkdirs()
+
+        val mediaRecorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            MediaRecorder(this)
+        } else {
+            @Suppress("DEPRECATION")
+            MediaRecorder()
+        }
+
+        try {
+            mediaRecorder.apply {
+                setAudioSource(MediaRecorder.AudioSource.MIC)
+                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                setAudioEncodingBitRate(64_000)
+                setAudioSamplingRate(22_050)
+                setOutputFile(outputFile.absolutePath)
+                prepare()
+                start()
+            }
+            recorder = mediaRecorder
+            recorderOutputFile = outputFile
+            isRecordingVoiceMessage = true
+            updateVoiceRecordUi()
+            updateSendButtonState()
+            android.widget.Toast.makeText(this, R.string.voice_recording_started, android.widget.Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            runCatching { mediaRecorder.release() }
+            runCatching { outputFile.delete() }
+            if (BuildConfig.DEBUG) Log.w("DPAD_MSG", "Voice recording start failed", e)
+            android.widget.Toast.makeText(this, R.string.voice_recording_error, android.widget.Toast.LENGTH_SHORT).show()
+            recorder = null
+            recorderOutputFile = null
+            isRecordingVoiceMessage = false
+            updateVoiceRecordUi()
+            updateSendButtonState()
+        }
+    }
+
+    private fun stopVoiceRecording(attachResult: Boolean, showFeedback: Boolean = true) {
+        val mediaRecorder = recorder
+        val outputFile = recorderOutputFile
+        var stopped = false
+
+        if (mediaRecorder != null) {
+            try {
+                mediaRecorder.stop()
+                stopped = true
+            } catch (e: Exception) {
+                if (BuildConfig.DEBUG) Log.w("DPAD_MSG", "Voice recording stop failed", e)
+            } finally {
+                runCatching { mediaRecorder.reset() }
+                runCatching { mediaRecorder.release() }
+            }
+        }
+
+        recorder = null
+        recorderOutputFile = null
+        isRecordingVoiceMessage = false
+        updateVoiceRecordUi()
+        updateSendButtonState()
+
+        if (!attachResult) {
+            if (outputFile != null) runCatching { outputFile.delete() }
+            return
+        }
+        if (!stopped || outputFile == null || !outputFile.exists()) {
+            if (showFeedback) {
+                android.widget.Toast.makeText(this, R.string.voice_recording_error, android.widget.Toast.LENGTH_SHORT).show()
+            }
+            runCatching { outputFile?.delete() }
+            return
+        }
+
+        val uri = runCatching {
+            FileProvider.getUriForFile(this, "$packageName.fileprovider", outputFile)
+        }.getOrElse {
+            Uri.fromFile(outputFile)
+        }
+
+        if (!AttachmentPolicy.isWithinMmsLimit(this, uri)) {
+            runCatching { outputFile.delete() }
+            android.widget.Toast.makeText(this, R.string.voice_recording_too_large, android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        setPendingAttachment(uri, outputFile)
+        if (showFeedback) {
+            android.widget.Toast.makeText(this, R.string.voice_recording_stopped, android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun updateVoiceRecordUi() {
+        if (isRecordingVoiceMessage) {
+            binding.btnVoiceRecord.contentDescription = getString(R.string.voice_record_stop)
+            binding.btnVoiceRecord.imageTintList = ColorStateList.valueOf(
+                ContextCompat.getColor(this, R.color.statusFailed)
+            )
+        } else {
+            binding.btnVoiceRecord.contentDescription = getString(R.string.voice_record)
+            binding.btnVoiceRecord.imageTintList = ColorStateList.valueOf(ThemeManager.accentColor(this))
+        }
+    }
+
     // ─── Attachment preview ─────────────────────────────────────────────────
 
     private fun showAttachmentPreview(uri: Uri) {
@@ -483,36 +731,58 @@ class ThreadActivity : BaseActivity() {
             binding.attachmentPreviewBar.visibility = View.VISIBLE
             lifecycleScope.launch {
                 val mimeType = withContext(Dispatchers.IO) {
-                    try { contentResolver.getType(uri)?.lowercase().orEmpty() } catch (_: Exception) { "" }
+                    AttachmentPolicy.resolveMimeType(this@ThreadActivity, uri)
                 }
-                if (mimeType.startsWith("image/")) {
-                    try {
-                        // Avoid requesting original-size bitmaps (can OOM on very large images).
-                        Glide.with(this@ThreadActivity)
-                            .load(uri)
-                            .centerCrop()
-                            .override(800, 800)
-                            .into(binding.ivAttachmentPreview)
-                    } catch (e: Exception) {
-                        if (BuildConfig.DEBUG) Log.w("DPAD_MSG", "showAttachmentPreview: failed to load image preview", e)
+                val label = withContext(Dispatchers.IO) {
+                    resolveAttachmentPreviewLabel(uri, mimeType)
+                }
+                binding.tvAttachmentPreviewLabel.text = label
+
+                when {
+                    mimeType.startsWith("image/") -> {
+                        try {
+                            binding.ivAttachmentPreview.scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+                            binding.ivAttachmentPreview.contentDescription = getString(R.string.image_attachment_preview)
+                            Glide.with(this@ThreadActivity)
+                                .load(uri)
+                                .centerCrop()
+                                .override(800, 800)
+                                .into(binding.ivAttachmentPreview)
+                        } catch (e: Exception) {
+                            if (BuildConfig.DEBUG) Log.w("DPAD_MSG", "showAttachmentPreview: failed to load image preview", e)
+                            Glide.with(this@ThreadActivity).clear(binding.ivAttachmentPreview)
+                            binding.ivAttachmentPreview.scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+                            binding.ivAttachmentPreview.setImageResource(R.drawable.ic_attach)
+                        }
+                    }
+                    mimeType.startsWith("audio/") -> {
+                        Glide.with(this@ThreadActivity).clear(binding.ivAttachmentPreview)
+                        binding.ivAttachmentPreview.scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+                        binding.ivAttachmentPreview.contentDescription = getString(R.string.audio_attachment_preview)
+                        binding.ivAttachmentPreview.setImageResource(R.drawable.ic_mic)
+                    }
+                    else -> {
+                        Glide.with(this@ThreadActivity).clear(binding.ivAttachmentPreview)
+                        binding.ivAttachmentPreview.scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+                        binding.ivAttachmentPreview.contentDescription = getString(R.string.message_attachment_preview)
                         binding.ivAttachmentPreview.setImageResource(R.drawable.ic_attach)
                     }
-                } else {
-                    binding.ivAttachmentPreview.setImageResource(R.drawable.ic_attach)
                 }
+
                 binding.btnRemoveAttachment.requestFocus()
                 updateSendButtonState()
             }
         } catch (e: SecurityException) {
-            // Missing permission to read the URI — show a friendly fallback and log
             if (BuildConfig.DEBUG) Log.w("DPAD_MSG", "showAttachmentPreview: security error for uri=$uri", e)
             binding.attachmentPreviewBar.visibility = View.VISIBLE
+            binding.tvAttachmentPreviewLabel.text = getString(R.string.attachment_generic_preview)
             binding.ivAttachmentPreview.setImageResource(R.drawable.ic_attach)
             android.widget.Toast.makeText(this, R.string.error_picking_contact, android.widget.Toast.LENGTH_SHORT).show()
             updateSendButtonState()
         } catch (e: Exception) {
             if (BuildConfig.DEBUG) Log.w("DPAD_MSG", "showAttachmentPreview: unexpected error for uri=$uri", e)
             binding.attachmentPreviewBar.visibility = View.VISIBLE
+            binding.tvAttachmentPreviewLabel.text = getString(R.string.attachment_generic_preview)
             binding.ivAttachmentPreview.setImageResource(R.drawable.ic_attach)
             updateSendButtonState()
         }
@@ -551,13 +821,66 @@ class ThreadActivity : BaseActivity() {
         attachmentPickerLauncher.launch(chooser)
     }
 
-    private fun clearAttachment() {
+    private fun clearAttachment(deleteTempFiles: Boolean = true) {
+        val voiceFile = pendingVoiceAttachmentFile
         pendingAttachmentUri = null
         pendingAttachmentUris.clear()
+        pendingVoiceAttachmentFile = null
         binding.attachmentPreviewBar.visibility = View.GONE
+        binding.tvAttachmentPreviewLabel.text = ""
         Glide.with(this).clear(binding.ivAttachmentPreview)
-        lifecycleScope.launch(Dispatchers.IO) { deleteCameraTempFile() }
+        if (deleteTempFiles) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                runCatching { voiceFile?.delete() }
+                deleteCameraTempFile()
+            }
+        }
         updateSendButtonState()
+    }
+
+    private fun setPendingAttachment(uri: Uri, ownedVoiceFile: File? = null) {
+        if (!AttachmentPolicy.isWithinMmsLimit(this, uri)) {
+            if (ownedVoiceFile != null) runCatching { ownedVoiceFile.delete() }
+            val mimeType = AttachmentPolicy.resolveMimeType(this, uri)
+            val res = if (mimeType.startsWith("audio/")) {
+                R.string.voice_recording_too_large
+            } else {
+                R.string.attachment_too_large_generic
+            }
+            android.widget.Toast.makeText(this, res, android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (pendingVoiceAttachmentFile != null && pendingVoiceAttachmentFile != ownedVoiceFile) {
+            runCatching { pendingVoiceAttachmentFile?.delete() }
+        }
+        pendingVoiceAttachmentFile = ownedVoiceFile
+        pendingAttachmentUri = uri
+        pendingAttachmentUris.clear()
+        pendingAttachmentUris.add(uri)
+        showAttachmentPreview(uri)
+    }
+
+    private fun resolveAttachmentPreviewLabel(uri: Uri, mimeType: String): String {
+        val displayName = try {
+            contentResolver.query(
+                uri,
+                arrayOf(OpenableColumns.DISPLAY_NAME),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0).orEmpty() else ""
+            }.orEmpty()
+        } catch (_: Exception) {
+            ""
+        }
+
+        if (displayName.isNotBlank()) return displayName
+        return when {
+            mimeType.startsWith("audio/") -> getString(R.string.attachment_audio_preview)
+            mimeType.startsWith("image/") -> getString(R.string.image_attached)
+            else -> getString(R.string.attachment_generic_preview)
+        }
     }
 
     private fun deleteCameraTempFile() {
@@ -572,6 +895,10 @@ class ThreadActivity : BaseActivity() {
             ?.getStringArrayListExtra(EXTRA_PREFILL_ATTACHMENT_URIS)
             ?.mapNotNull { runCatching { Uri.parse(it) }.getOrNull() }
             .orEmpty()
+        if (pendingVoiceAttachmentFile != null) {
+            runCatching { pendingVoiceAttachmentFile?.delete() }
+            pendingVoiceAttachmentFile = null
+        }
         if (uriList.isNotEmpty()) {
             pendingAttachmentUris.clear()
             pendingAttachmentUris.addAll(uriList)
@@ -583,10 +910,7 @@ class ThreadActivity : BaseActivity() {
         val uriString = intent?.getStringExtra(EXTRA_PREFILL_ATTACHMENT_URI)
         if (uriString.isNullOrBlank()) return
         val uri = Uri.parse(uriString)
-        pendingAttachmentUri = uri
-        pendingAttachmentUris.clear()
-        pendingAttachmentUris.add(uri)
-        showAttachmentPreview(uri)
+        setPendingAttachment(uri)
     }
 
     private fun launchCameraAttachment() {
@@ -615,7 +939,7 @@ class ThreadActivity : BaseActivity() {
      * pick up an unrelated older image.
      */
     private fun findLatestCameraImage(): Uri? {
-        val collection = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         } else {
             @Suppress("DEPRECATION")
@@ -666,9 +990,9 @@ class ThreadActivity : BaseActivity() {
      */
     private fun updateSendButtonState() {
         val hasText       = binding.etMessage.text?.isNotBlank() == true
-        val hasAttachment = pendingAttachmentUri != null
+        val hasAttachment = pendingAttachmentUri != null || pendingAttachmentUris.isNotEmpty()
         val hasChips      = binding.chipsContainer.childCount > 0
-        val enabled       = hasText || hasAttachment || hasChips
+        val enabled       = (hasText || hasAttachment || hasChips) && !isRecordingVoiceMessage
         val accentColor   = ThemeManager.accentColor(this)
 
         binding.btnSend.isEnabled = enabled
@@ -956,16 +1280,38 @@ class ThreadActivity : BaseActivity() {
     // ─── Send ────────────────────────────────────────────────────────────────
 
     private fun sendMessage() {
+        if (isRecordingVoiceMessage) {
+            android.widget.Toast.makeText(this, R.string.voice_record_stop, android.widget.Toast.LENGTH_SHORT).show()
+            updateSendButtonState()
+            return
+        }
+
         // Disable send button to prevent double-tap
         binding.btnSend.isEnabled = false
 
         var body       = binding.etMessage.text?.toString()?.trim() ?: ""
         val attachment = pendingAttachmentUri
+        val voiceAttachmentFileForSend = pendingVoiceAttachmentFile
         val scheduledAtMillis = pendingScheduledAtMillis
         val attachments = LinkedHashSet<Uri>().apply {
             addAll(pendingAttachmentUris)
             if (attachment != null) add(attachment)
         }.toList()
+
+        val oversizedAttachment = attachments.firstOrNull {
+            !AttachmentPolicy.isWithinMmsLimit(this, it)
+        }
+        if (oversizedAttachment != null) {
+            val mimeType = AttachmentPolicy.resolveMimeType(this, oversizedAttachment)
+            val res = if (mimeType.startsWith("audio/")) {
+                R.string.voice_recording_too_large
+            } else {
+                R.string.attachment_too_large_generic
+            }
+            android.widget.Toast.makeText(this, res, android.widget.Toast.LENGTH_SHORT).show()
+            updateSendButtonState()
+            return
+        }
 
         // Collect numbers from chips and append to message
         val chipNumbers = mutableListOf<String>()
@@ -982,11 +1328,11 @@ class ThreadActivity : BaseActivity() {
         }
 
         if (body.isBlank() && attachments.isEmpty()) {
-            binding.btnSend.isEnabled = true
+            updateSendButtonState()
             return
         }
         if (phoneNumber.isBlank() && participants.isEmpty()) {
-            binding.btnSend.isEnabled = true
+            updateSendButtonState()
             return
         }
 
@@ -1007,7 +1353,7 @@ class ThreadActivity : BaseActivity() {
                 getString(R.string.message_blocked_by_policy),
                 android.widget.Toast.LENGTH_LONG
             ).show()
-            binding.btnSend.isEnabled = true
+            updateSendButtonState()
             return
         }
         // ─────────────────────────────────────────────────────────────────────
@@ -1018,7 +1364,7 @@ class ThreadActivity : BaseActivity() {
         binding.etMessage.text?.clear()
         binding.chipsContainer.removeAllViews()
         binding.chipsContainerScroll.visibility = View.GONE
-        clearAttachment()
+        clearAttachment(deleteTempFiles = false)
         pendingScheduledAtMillis = null
         updateScheduledUi()
         binding.etMessage.requestFocus()
@@ -1128,7 +1474,10 @@ class ThreadActivity : BaseActivity() {
                     }
                 }
             }
-            deleteCameraTempFile()
+            if (scheduledAtMillis == null) {
+                deleteCameraTempFile()
+                runCatching { voiceAttachmentFileForSend?.delete() }
+            }
             withContext(Dispatchers.Main) { loadMessages() }
         }
     }

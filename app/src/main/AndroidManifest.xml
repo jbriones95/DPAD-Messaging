@@ -22,6 +22,7 @@
         android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <!-- ─── Notifications ─── -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
