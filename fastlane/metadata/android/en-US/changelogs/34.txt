@@ -1,0 +1,3 @@
+ - Fix: Launcher icon adaptive/legacy mipmap wiring to display the KDE‑inspired + Material launcher mark correctly on devices
+ - Fix: Avoid slow conversation fallback scans that could cause SMS delivery ANRs on Kyocera devices
+ - Improve: Resolve incoming SMS threads directly through the Telephony provider
