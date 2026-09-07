@@ -84,6 +84,40 @@
                 android:orientation="vertical"
                 android:paddingBottom="@dimen/padding_medium" />
 
+            <!-- Action: Set contact color -->
+            <LinearLayout
+                android:id="@+id/row_color"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/conversation_item_height"
+                android:background="@drawable/details_row_bg"
+                android:clickable="true"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="@dimen/padding_medium"
+                android:paddingEnd="@dimen/padding_medium">
+
+                <View
+                    android:id="@+id/color_swatch"
+                    android:layout_width="@dimen/avatar_size"
+                    android:layout_height="@dimen/avatar_size"
+                    android:background="@drawable/avatar_bg"
+                    android:contentDescription="@null"
+                    android:focusable="false" />
+
+                <TextView
+                    android:id="@+id/btn_color"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/padding_medium"
+                    android:focusable="false"
+                    android:text="@string/contact_color"
+                    android:textColor="@color/conversationSnippet"
+                    android:textSize="@dimen/text_size_normal" />
+
+            </LinearLayout>
+
             <!-- Action: Rename conversation -->
             <TextView
                 android:id="@+id/btn_rename"

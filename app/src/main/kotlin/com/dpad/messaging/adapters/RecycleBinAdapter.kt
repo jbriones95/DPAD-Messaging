@@ -5,12 +5,12 @@ import android.graphics.Typeface
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.core.graphics.ColorUtils
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.dpad.messaging.R
 import com.dpad.messaging.databinding.ItemConversationBinding
+import com.dpad.messaging.helpers.ContactColors
 import com.dpad.messaging.helpers.Prefs
 import com.dpad.messaging.helpers.ThemeManager
 import java.text.SimpleDateFormat
@@ -85,16 +85,13 @@ class RecycleBinAdapter(
             binding.tvAvatarLetter.visibility = View.VISIBLE
             val initial = item.senderName.firstOrNull()?.uppercaseChar()?.toString() ?: "#"
             binding.tvAvatarLetter.text = initial
-            binding.tvAvatarLetter.background.setTint(avatarColor(item.phoneNumber))
+            binding.tvAvatarLetter.background.setTint(
+                ContactColors.resolveColor(item.phoneNumber)
+            )
 
             binding.conversationClickArea.setOnClickListener { onItemClick(item) }
             binding.conversationClickArea.setOnLongClickListener { onItemLongClick(item); true }
             binding.btnConversationMenu.setOnClickListener { onItemMenuClick(it, item) }
-        }
-
-        private fun avatarColor(seed: String): Int {
-            val hue = (Math.abs(seed.hashCode()) % 360).toFloat()
-            return ColorUtils.HSLToColor(floatArrayOf(hue, 0.55f, 0.35f))
         }
 
         private fun formatDate(timestamp: Long): String {

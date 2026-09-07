@@ -38,6 +38,7 @@ class Prefs private constructor(context: Context) {
         private const val KEY_MMS_PROXY_PORT      = "mms_proxy_port"
         private const val KEY_MMS_PROXY_INITIALIZED = "mms_proxy_initialized"
         private const val KEY_DEFAULT_SMS_DISMISSED = "default_sms_dismissed"
+        private const val KEY_CONTACT_COLOR_PREFIX = "contact_color_"
 
         const val PRIVACY_FULL        = "full"
         const val PRIVACY_SENDER_ONLY = "sender_only"
@@ -287,4 +288,21 @@ class Prefs private constructor(context: Context) {
     var defaultSmsDismissed: Boolean
         get() = prefs.getBoolean(KEY_DEFAULT_SMS_DISMISSED, false)
         set(v) = prefs.edit().putBoolean(KEY_DEFAULT_SMS_DISMISSED, v).apply()
+
+    /** Contact color for a normalized phone number, or null if using the default. */
+    fun getContactColor(normalizedNumber: String): Int? {
+        val raw = prefs.getString(KEY_CONTACT_COLOR_PREFIX + normalizedNumber, null) ?: return null
+        return raw.toIntOrNull()
+    }
+
+    /** Persists (or clears, when [color] is null) the color for a phone number. */
+    fun setContactColor(normalizedNumber: String, color: Int?) {
+        prefs.edit().apply {
+            if (color == null) {
+                remove(KEY_CONTACT_COLOR_PREFIX + normalizedNumber)
+            } else {
+                putString(KEY_CONTACT_COLOR_PREFIX + normalizedNumber, color.toString())
+            }
+        }.apply()
+    }
 }

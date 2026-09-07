@@ -22,6 +22,8 @@ import androidx.core.content.ContextCompat
 import com.dpad.messaging.App
 import com.dpad.messaging.R
 import com.dpad.messaging.databinding.ActivityConversationDetailsBinding
+import com.dpad.messaging.helpers.ContactColors
+import com.dpad.messaging.helpers.Prefs
 import com.dpad.messaging.helpers.ThemeManager
 import com.dpad.messaging.models.BlockedNumber
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +44,7 @@ class ConversationDetailsActivity : BaseActivity() {
 
     private var threadId: Long = -1L
     private var currentTitle: String = ""
+    private var colorTargetNumber: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -63,12 +66,16 @@ class ConversationDetailsActivity : BaseActivity() {
 
         binding.btnBack.setOnClickListener { finish() }
 
-        // D-Pad focus chain: Back → (Participants) → Rename → Block
+        // D-Pad focus chain: Back → (Participants) → Color → Rename → Block
         // `populateParticipants` will adjust the exact chain depending on whether participants exist.
 
         binding.btnRename.setOnClickListener { showRenameDialog() }
+        binding.rowColor.setOnClickListener { showColorPicker() }
         val blockTarget = participants.firstOrNull() ?: phoneNumber
         binding.btnBlock.setOnClickListener  { showBlockConfirmation(blockTarget) }
+
+        colorTargetNumber = participants.firstOrNull() ?: phoneNumber
+        updateColorSwatch()
     }
 
     private fun populateParticipants(participants: List<String>, phoneNumber: String) {
@@ -91,9 +98,11 @@ class ConversationDetailsActivity : BaseActivity() {
         } else participants
 
         if (numbers.isEmpty()) {
-            // No participants — leave behavior to Rename/Block
-            binding.btnBack.nextFocusDownId = binding.btnRename.id
-            binding.btnRename.nextFocusUpId = binding.btnBack.id
+            // No participants — leave behavior to Color/Rename/Block
+            binding.btnBack.nextFocusDownId = binding.rowColor.id
+            binding.rowColor.nextFocusUpId = binding.btnBack.id
+            binding.rowColor.nextFocusDownId = binding.btnRename.id
+            binding.btnRename.nextFocusUpId = binding.rowColor.id
             return
         }
 
@@ -239,8 +248,10 @@ class ConversationDetailsActivity : BaseActivity() {
             }
 
             if (index == lastIndex) {
-                tv.nextFocusDownId = binding.btnRename.id
-                binding.btnRename.nextFocusUpId = tvId
+                tv.nextFocusDownId = binding.rowColor.id
+                binding.rowColor.nextFocusUpId = tvId
+                binding.rowColor.nextFocusDownId = binding.btnRename.id
+                binding.btnRename.nextFocusUpId = binding.rowColor.id
             }
 
             prevTvId = tvId
@@ -301,6 +312,28 @@ class ConversationDetailsActivity : BaseActivity() {
                 intArrayOf(onPrimary, accent)
             )
         }
+    }
+
+    private fun showColorPicker() {
+        if (colorTargetNumber.isBlank()) return
+        val current = ContactColors.customColor(colorTargetNumber)
+        ContactColors.showColorPicker(
+            context = this,
+            title = getString(R.string.choose_contact_color),
+            currentColor = current
+        ) { selected ->
+            if (selected != current) {
+                Prefs.get().setContactColor(ContactColors.normalize(colorTargetNumber), selected)
+                updateColorSwatch()
+            }
+        }
+    }
+
+    private fun updateColorSwatch() {
+        if (colorTargetNumber.isBlank()) return
+        binding.colorSwatch.background.setTint(
+            ContactColors.resolveColor(colorTargetNumber)
+        )
     }
 
     private fun showRenameDialog() {

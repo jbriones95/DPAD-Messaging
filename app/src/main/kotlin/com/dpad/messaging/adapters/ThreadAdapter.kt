@@ -2,6 +2,7 @@ package com.dpad.messaging.adapters
 
 import android.content.Intent
 import android.widget.ImageView
+import android.widget.TextView
 import android.widget.Toast
 import android.net.Uri
 import android.view.LayoutInflater
@@ -19,6 +20,7 @@ import com.dpad.messaging.databinding.ItemMessageSendingBinding
 import com.dpad.messaging.databinding.ItemMessageSentBinding
 import com.dpad.messaging.databinding.ItemThreadDateBinding
 import com.dpad.messaging.helpers.AttachmentPolicy
+import com.dpad.messaging.helpers.ContactColors
 import com.dpad.messaging.helpers.Prefs
 import com.dpad.messaging.models.Message
 import com.dpad.messaging.models.ThreadItem
@@ -171,6 +173,7 @@ class ThreadAdapter(
             } else {
                 binding.tvSenderName.visibility = View.GONE
             }
+            applyContactBubbleColor(message)
             bindMessageAttachment(
                 message = message,
                 imageView = binding.ivAttachment,
@@ -180,6 +183,25 @@ class ThreadAdapter(
                 onMessageLongClick(message)
                 true
             }
+        }
+
+        /** Colors the received bubble with the sender's per-contact color (if set). */
+        private fun applyContactBubbleColor(message: Message) {
+            val context = binding.root.context
+            val color = ContactColors.customColor(message.address)
+
+            if (color == null) {
+                binding.bubbleContainer.setBackgroundResource(R.drawable.bubble_received)
+                binding.tvBody.setTextColor(context.getColor(R.color.bubbleReceivedText))
+                binding.tvTime.setTextColor(context.getColor(R.color.messageMetaOnReceived))
+                binding.tvSenderName.setTextColor(context.getColor(R.color.colorSecondary))
+                return
+            }
+
+            binding.bubbleContainer.background = ContactColors.receivedBubbleDrawable(color)
+            binding.tvBody.setTextColor(ContactColors.textColorOn(color))
+            binding.tvTime.setTextColor(ContactColors.metaColorOn(color))
+            binding.tvSenderName.setTextColor(color)
         }
     }
 

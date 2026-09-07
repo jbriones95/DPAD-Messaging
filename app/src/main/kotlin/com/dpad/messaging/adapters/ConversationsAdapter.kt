@@ -6,13 +6,13 @@ import android.net.Uri
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.core.graphics.ColorUtils
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.dpad.messaging.R
 import com.dpad.messaging.databinding.ItemConversationBinding
+import com.dpad.messaging.helpers.ContactColors
 import com.dpad.messaging.helpers.Prefs
 import com.dpad.messaging.helpers.ThemeManager
 import com.dpad.messaging.models.Conversation
@@ -24,7 +24,8 @@ import java.util.Locale
 class ConversationsAdapter(
     private val onConversationClick: (Conversation) -> Unit,
     private val onConversationLongClick: (Conversation) -> Unit,
-    private val onConversationMenuClick: (View, Conversation) -> Unit
+    private val onConversationMenuClick: (View, Conversation) -> Unit,
+    private val onAvatarLongClick: ((Conversation) -> Unit)? = null
 ) : ListAdapter<Conversation, ConversationsAdapter.ConversationViewHolder>(DIFF_CALLBACK) {
 
     companion object {
@@ -123,6 +124,13 @@ class ConversationsAdapter(
         }
 
         private fun bindAvatar(conversation: Conversation) {
+            val avatarClickListener = onAvatarLongClick?.let { click ->
+                View.OnLongClickListener {
+                    click(conversation)
+                    true
+                }
+            }
+
             if (conversation.photoUri.isNotBlank()) {
                 binding.ivAvatar.visibility = View.VISIBLE
                 binding.tvAvatarLetter.visibility = View.GONE
@@ -131,21 +139,17 @@ class ConversationsAdapter(
                     .circleCrop()
                     .placeholder(R.drawable.ic_person)
                     .into(binding.ivAvatar)
+                binding.ivAvatar.setOnLongClickListener(avatarClickListener)
             } else {
                 binding.ivAvatar.visibility = View.GONE
                 binding.tvAvatarLetter.visibility = View.VISIBLE
                 val initial = conversation.title.firstOrNull()?.uppercaseChar()?.toString() ?: "#"
                 binding.tvAvatarLetter.text = initial
                 binding.tvAvatarLetter.background.setTint(
-                    avatarColor(conversation.phoneNumber)
+                    ContactColors.resolveColor(conversation.phoneNumber)
                 )
+                binding.tvAvatarLetter.setOnLongClickListener(avatarClickListener)
             }
-        }
-
-        /** Generate a stable, readable HSL colour from the phone number. */
-        private fun avatarColor(seed: String): Int {
-            val hue = (Math.abs(seed.hashCode()) % 360).toFloat()
-            return ColorUtils.HSLToColor(floatArrayOf(hue, 0.55f, 0.35f))
         }
 
         private fun formatDate(timestamp: Long): String {

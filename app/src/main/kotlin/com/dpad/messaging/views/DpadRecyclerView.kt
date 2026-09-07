@@ -49,7 +49,14 @@ class DpadRecyclerView @JvmOverloads constructor(
                     val lastVisible = lm.findLastVisibleItemPosition()
                     val focusedPos = getFocusedAdapterPosition(focused)
                     if (itemCount > 0 && lastVisible >= itemCount - 1 && focusedPos >= itemCount - 1) {
-                        onBottomEdgeReached?.invoke()
+                        val handled = onBottomEdgeReached
+                        if (handled != null) {
+                            // The callback fully owns focus handling; skip the default
+                            // focus search so it can't override where the callback
+                            // requested (e.g. returning to the compose field).
+                            handled.invoke()
+                            return null
+                        }
                         return focusSearchParent(direction)
                     }
                 }

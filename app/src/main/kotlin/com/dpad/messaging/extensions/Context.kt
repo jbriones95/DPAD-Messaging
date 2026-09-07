@@ -409,20 +409,24 @@ fun Context.markThreadAsReadInTelephony(threadId: Long) {
     try {
         val values = android.content.ContentValues().apply {
             put(Telephony.Sms.READ, 1)
+            put(Telephony.Sms.SEEN, 1)
         }
         contentResolver.update(
             Telephony.Sms.CONTENT_URI,
             values,
-            "${Telephony.Sms.THREAD_ID} = ? AND ${Telephony.Sms.READ} = 0",
+            "${Telephony.Sms.THREAD_ID} = ? AND (${Telephony.Sms.READ} = 0 OR ${Telephony.Sms.SEEN} = 0)",
             arrayOf(threadId.toString())
         )
         // Also mark MMS rows for this thread as read
         try {
-            val mmsValues = android.content.ContentValues().apply { put("read", 1) }
+            val mmsValues = android.content.ContentValues().apply {
+                put("read", 1)
+                put("seen", 1)
+            }
             contentResolver.update(
                 android.net.Uri.parse("content://mms"),
                 mmsValues,
-                "thread_id = ? AND read = 0",
+                "thread_id = ? AND (read = 0 OR seen = 0)",
                 arrayOf(threadId.toString())
             )
         } catch (e: Exception) {

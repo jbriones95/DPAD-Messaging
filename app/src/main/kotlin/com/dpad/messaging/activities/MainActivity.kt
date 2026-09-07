@@ -22,12 +22,14 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.dpad.messaging.App
+import com.dpad.messaging.BuildConfig
 import com.dpad.messaging.R
 import com.dpad.messaging.adapters.ConversationsAdapter
 import com.dpad.messaging.databinding.ActivityMainBinding
 import com.dpad.messaging.events.RefreshConversations
 import com.dpad.messaging.extensions.getConversationsFromTelephony
 import com.dpad.messaging.helpers.ConversationCache
+import com.dpad.messaging.helpers.ContactColors
 import com.dpad.messaging.extensions.markThreadAsReadInTelephony
 import com.dpad.messaging.helpers.Prefs
 import com.dpad.messaging.helpers.ThemeManager
@@ -37,6 +39,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import org.greenrobot.eventbus.EventBus
 import org.greenrobot.eventbus.Subscribe
@@ -56,6 +59,7 @@ class MainActivity : BaseActivity() {
 
     /** Thread to focus after list refresh (used when returning from a conversation). */
     private var pendingFocusThreadId: Long? = null
+    private var hasLoadedConversationsOnce = false
 
     private val requiredPermissions = buildList {
         add(Manifest.permission.READ_SMS)
@@ -97,12 +101,14 @@ class MainActivity : BaseActivity() {
         setupToolbar()
         setupSearch()
         checkPermissions()
+        if (handleLauncherThreadIntent(intent)) return
         handleExternalComposeIntent(intent)
     }
 
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (handleLauncherThreadIntent(intent)) return
         handleExternalComposeIntent(intent)
     }
 
@@ -131,7 +137,8 @@ class MainActivity : BaseActivity() {
         conversationsAdapter = ConversationsAdapter(
             onConversationClick = { conversation -> openThread(conversation) },
             onConversationLongClick = { conversation -> showConversationContextMenu(conversation) },
-            onConversationMenuClick = { _, conversation -> showConversationContextMenu(conversation) }
+            onConversationMenuClick = { _, conversation -> showConversationContextMenu(conversation) },
+            onAvatarLongClick = { conversation -> showContactColorPicker(conversation) }
         )
 
         binding.rvConversations.apply {
@@ -228,25 +235,51 @@ class MainActivity : BaseActivity() {
     private fun loadConversations(forceRefresh: Boolean = false) {
         if (!hasRequiredPermissions()) return
 
+        var showedCached = false
         if (!forceRefresh) {
             ConversationCache.get()?.let { cached ->
                 displayConversations(cached)
+                showedCached = true
             }
+        }
+
+        val showLoading = (!hasLoadedConversationsOnce && !showedCached) ||
+            (forceRefresh && conversationsAdapter.currentList.isEmpty())
+        if (showLoading) {
+            binding.loadingConversations.visibility = View.VISIBLE
+            binding.tvEmpty.visibility = View.GONE
+            binding.rvConversations.visibility = View.INVISIBLE
         }
 
         loadConversationsJob?.cancel()
         loadConversationsJob = lifecycleScope.launch {
-            val pinnedIds = Prefs.get().getPinnedThreadIds()
-            val mutedIds = Prefs.get().getMutedThreadIds()
-            val conversations = withContext(Dispatchers.IO) {
-                getConversationsFromTelephony(
-                    App.get().contactHelper,
-                    pinnedIds,
-                    mutedThreadIds = mutedIds
-                )
+            try {
+                val pinnedIds = Prefs.get().getPinnedThreadIds()
+                val mutedIds = Prefs.get().getMutedThreadIds()
+                val conversations = withContext(Dispatchers.IO) {
+                    getConversationsFromTelephony(
+                        App.get().contactHelper,
+                        pinnedIds,
+                        mutedThreadIds = mutedIds
+                    )
+                }
+                if (!isActive) return@launch
+                hasLoadedConversationsOnce = true
+                ConversationCache.put(conversations)
+                displayConversations(conversations)
+            } catch (e: Exception) {
+                if (BuildConfig.DEBUG) android.util.Log.w("DPAD_MSG", "loadConversations failed", e)
+                if (!isActive) return@launch
+                hasLoadedConversationsOnce = true
+                if (conversationsAdapter.currentList.isEmpty()) {
+                    binding.tvEmpty.visibility = View.VISIBLE
+                }
+            } finally {
+                if (isActive) {
+                    binding.loadingConversations.visibility = View.GONE
+                    binding.rvConversations.visibility = View.VISIBLE
+                }
             }
-            ConversationCache.put(conversations)
-            displayConversations(conversations)
         }
     }
 
@@ -334,6 +367,103 @@ class MainActivity : BaseActivity() {
             }
         }
         startActivity(intent)
+    }
+
+    private fun showContactColorPicker(conversation: Conversation) {
+        val number = conversation.phoneNumber
+        if (number.isBlank()) return
+        val current = ContactColors.customColor(number)
+        ContactColors.showColorPicker(
+            context = this,
+            title = conversation.title.ifBlank { number },
+            currentColor = current
+        ) { selected ->
+            if (selected != current) {
+                Prefs.get().setContactColor(ContactColors.normalize(number), selected)
+                conversationsAdapter.notifyDataSetChanged()
+            }
+        }
+    }
+
+    private fun openThreadById(threadId: Long) {
+        if (threadId <= 0L) return
+        pendingFocusThreadId = threadId
+        startActivity(Intent(this, ThreadActivity::class.java).apply {
+            putExtra(ThreadActivity.EXTRA_THREAD_ID, threadId)
+        })
+    }
+
+    private fun handleLauncherThreadIntent(incomingIntent: Intent?): Boolean {
+        val intent = incomingIntent ?: return false
+
+        val directExtra = intent.getLongExtra(ThreadActivity.EXTRA_THREAD_ID, -1L)
+        val threadId = if (directExtra > 0L) {
+            directExtra
+        } else {
+            resolveThreadIdFromLauncherIntent(intent)
+        }
+
+        if (threadId <= 0L) return false
+        openThreadById(threadId)
+        return true
+    }
+
+    private fun resolveThreadIdFromLauncherIntent(intent: Intent): Long {
+        val extras = listOf("thread_id", "threadId", "conversation_id", "conversationId")
+        for (key in extras) {
+            val value = intent.getLongExtra(key, -1L)
+            if (value > 0L) return value
+            val raw = intent.extras?.get(key)?.toString()?.toLongOrNull()
+            if (raw != null && raw > 0L) return raw
+        }
+
+        val data = intent.data ?: return -1L
+        return runCatching {
+            if (data.isHierarchical) {
+                val queryThread = data.getQueryParameter("thread_id")?.toLongOrNull()
+                if (queryThread != null && queryThread > 0L) return queryThread
+            }
+            val scheme = data.scheme?.lowercase() ?: return -1L
+            if (scheme == "sms" || scheme == "mms") {
+                val number = data.schemeSpecificPart?.trim()
+                if (!number.isNullOrBlank()) {
+                    return findThreadIdByPhoneNumber(number)
+                }
+            }
+            if (scheme != "content") return -1L
+
+            val authority = data.authority?.lowercase().orEmpty()
+            val segments = data.pathSegments
+
+            if (authority == "mms-sms" && segments.firstOrNull() == "conversations") {
+                val parsed = segments.getOrNull(1)?.toLongOrNull()
+                if (parsed != null && parsed > 0L) return parsed
+            }
+
+            if (authority == "mms" || authority == "sms") {
+                return queryThreadIdForContentMessageUri(data)
+            }
+
+            -1L
+        }.getOrDefault(-1L)
+    }
+
+    private fun queryThreadIdForContentMessageUri(uri: Uri): Long {
+        return runCatching {
+            contentResolver.query(uri, arrayOf("thread_id"), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    cursor.getLong(0)
+                } else {
+                    -1L
+                }
+            } ?: -1L
+        }.getOrDefault(-1L)
+    }
+
+    private fun findThreadIdByPhoneNumber(number: String): Long {
+        return runCatching {
+            Telephony.Threads.getOrCreateThreadId(this, number)
+        }.getOrDefault(-1L)
     }
 
     private fun handleExternalComposeIntent(incomingIntent: Intent?): Boolean {

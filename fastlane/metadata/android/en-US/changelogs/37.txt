@@ -1,0 +1,7 @@
+- New: Assign a custom color per contact for avatars and message bubbles
+ - New: Two-row compose layout keeps the text box full-width on narrow screens
+ - Fix: Opening a thread from the launcher's missed activities no longer crashes
+ - Fix: Incoming MMS/SMS threads from notifications open correctly and clear the unread badge
+ - Fix: D-Pad can return to the compose text box after leaving it; UP from tool icons steps to the text box first
+ - Improve: Conversation list shows a loading indicator while loading
+ - Improve: More reliable MMS thread resolution; diagnostic logs only in debug builds

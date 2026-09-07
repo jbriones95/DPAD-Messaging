@@ -45,7 +45,9 @@ object NotificationHelper {
                 putExtra(ThreadActivity.EXTRA_THREAD_ID, threadId)
                 putExtra(ThreadActivity.EXTRA_THREAD_TITLE, senderName)
                 putExtra(ThreadActivity.EXTRA_PHONE_NUMBER, phoneNumber)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )

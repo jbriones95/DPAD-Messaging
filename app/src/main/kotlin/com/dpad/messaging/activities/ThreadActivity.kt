@@ -425,19 +425,24 @@ class ThreadActivity : BaseActivity() {
                 else -> false
             }
         }
+        // D-Pad UP from the tool icons → the compose field first; another UP
+        // from the field → `goUpFromCompose` (toolbar / chips / attachment).
+        val goToMessageField = { ->
+            binding.etMessage.requestFocus(); true
+        }
         binding.btnAttach.setOnKeyListener { _, keyCode, event ->
             if (keyCode == KeyEvent.KEYCODE_DPAD_UP && event.action == KeyEvent.ACTION_DOWN) {
-                goUpFromCompose(); true
+                goToMessageField()
             } else false
         }
         binding.btnVoiceInput.setOnKeyListener { _, keyCode, event ->
             if (keyCode == KeyEvent.KEYCODE_DPAD_UP && event.action == KeyEvent.ACTION_DOWN) {
-                goUpFromCompose(); true
+                goToMessageField()
             } else false
         }
         binding.btnVoiceRecord.setOnKeyListener { _, keyCode, event ->
             if (keyCode == KeyEvent.KEYCODE_DPAD_UP && event.action == KeyEvent.ACTION_DOWN) {
-                goUpFromCompose(); true
+                goToMessageField()
             } else false
         }
         binding.btnSend.setOnKeyListener { _, keyCode, event ->
@@ -456,14 +461,14 @@ class ThreadActivity : BaseActivity() {
         binding.btnSchedule.setOnKeyListener { _, keyCode, event ->
             when {
                 keyCode == KeyEvent.KEYCODE_DPAD_UP && event.action == KeyEvent.ACTION_DOWN -> {
-                    goUpFromCompose(); true
+                    goToMessageField()
                 }
                 else -> false
             }
         }
         binding.btnSim.setOnKeyListener { _, keyCode, event ->
             if (keyCode == KeyEvent.KEYCODE_DPAD_UP && event.action == KeyEvent.ACTION_DOWN) {
-                goUpFromCompose(); true
+                goToMessageField()
             } else false
         }
         binding.btnSim.setOnClickListener { showSimPicker() }
@@ -544,9 +549,38 @@ class ThreadActivity : BaseActivity() {
             }
         }
 
+        // Two-row compose layout: the tool icons live on their own row below the
+        // text field so narrow screens keep the text box wide. Show that row only
+        // while the field or one of the icons has focus, freeing screen space for
+        // reading once the user leaves the compose area.
+        listOf(
+            binding.etMessage,
+            binding.btnSend,
+            binding.btnAttach,
+            binding.btnVoiceInput,
+            binding.btnVoiceRecord,
+            binding.btnSchedule,
+            binding.btnSim
+        ).forEach { view ->
+            view.setOnFocusChangeListener { _, _ -> updateComposeToolsVisibility() }
+        }
+        updateComposeToolsVisibility()
+
         // Compose bar gets initial focus
         binding.etMessage.requestFocus()
         updateScheduledUi()
+    }
+
+    private fun updateComposeToolsVisibility() {
+        val toolsInUse =
+            binding.etMessage.hasFocus() ||
+                binding.btnSend.hasFocus() ||
+                binding.btnAttach.hasFocus() ||
+                binding.btnVoiceInput.hasFocus() ||
+                binding.btnVoiceRecord.hasFocus() ||
+                binding.btnSchedule.hasFocus() ||
+                binding.btnSim.hasFocus()
+        binding.composeToolsRow.visibility = if (toolsInUse) View.VISIBLE else View.GONE
     }
 
     private fun launchAttachmentPickerWithPermission() {

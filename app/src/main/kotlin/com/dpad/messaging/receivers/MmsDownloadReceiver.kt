@@ -114,28 +114,30 @@ class MmsDownloadReceiver : BroadcastReceiver() {
             val mmsUri = Uri.parse("content://mms")
             val proj   = arrayOf("_id", "thread_id", "date", "sub", "m_type", "msg_box")
 
-            // ── Diagnostic dump of all recent rows ───────────────────────────────
+            // ── Diagnostic dump of all recent rows (debug only) ─────────────────
             val cutoffSecs = System.currentTimeMillis() / 1000L - 120L
-            try {
-                context.contentResolver.query(
-                    mmsUri, proj, "date > ?", arrayOf(cutoffSecs.toString()), "date DESC"
-                )?.use { cursor ->
-                    d { "MmsDownloadReceiver: ${cursor.count} recent MMS row(s) in provider:" }
-                    while (cursor.moveToNext()) {
-                        val id = cursor.getLong(cursor.getColumnIndexOrThrow("_id"))
-                        val tid = cursor.getLong(cursor.getColumnIndexOrThrow("thread_id"))
-                        val mType = cursor.getInt(cursor.getColumnIndexOrThrow("m_type"))
-                        val box = cursor.getInt(cursor.getColumnIndexOrThrow("msg_box"))
-                        val label = when (mType) {
-                            130 -> "M-Notification-Ind"
-                            132 -> "M-Retrieve-Conf(DOWNLOADED)"
-                            else -> "type=$mType"
+            if (BuildConfig.DEBUG) {
+                try {
+                    context.contentResolver.query(
+                        mmsUri, proj, "date > ?", arrayOf(cutoffSecs.toString()), "date DESC"
+                    )?.use { cursor ->
+                        d { "MmsDownloadReceiver: ${cursor.count} recent MMS row(s) in provider:" }
+                        while (cursor.moveToNext()) {
+                            val id = cursor.getLong(cursor.getColumnIndexOrThrow("_id"))
+                            val tid = cursor.getLong(cursor.getColumnIndexOrThrow("thread_id"))
+                            val mType = cursor.getInt(cursor.getColumnIndexOrThrow("m_type"))
+                            val box = cursor.getInt(cursor.getColumnIndexOrThrow("msg_box"))
+                            val label = when (mType) {
+                                130 -> "M-Notification-Ind"
+                                132 -> "M-Retrieve-Conf(DOWNLOADED)"
+                                else -> "type=$mType"
+                            }
+                            d { "  _id=$id thread_id=$tid msg_box=$box m_type=$label" }
                         }
-                        d { "  _id=$id thread_id=$tid msg_box=$box m_type=$label" }
                     }
+                } catch (e: Exception) {
+                    e({ "MmsDownloadReceiver: diagnostic query failed" }, e)
                 }
-            } catch (e: Exception) {
-                e({ "MmsDownloadReceiver: diagnostic query failed" }, e)
             }
 
             var msgId = -1L
@@ -210,21 +212,23 @@ class MmsDownloadReceiver : BroadcastReceiver() {
                 return
             }
 
-            try {
-                context.contentResolver.query(
-                    "content://mms/$msgId/part".toUri(),
-                    arrayOf("_id", "ct", "cl"),
-                    null,
-                    null,
-                    null
-                )?.use { c ->
-                    d { "MmsDownloadReceiver: parts for msgId=$msgId count=${c.count}" }
-                    while (c.moveToNext()) {
-                        d { "  part _id=${c.getLong(0)} ct='${c.getString(1)}' cl='${c.getString(2)}'" }
+            if (BuildConfig.DEBUG) {
+                try {
+                    context.contentResolver.query(
+                        "content://mms/$msgId/part".toUri(),
+                        arrayOf("_id", "ct", "cl"),
+                        null,
+                        null,
+                        null
+                    )?.use { c ->
+                        d { "MmsDownloadReceiver: parts for msgId=$msgId count=${c.count}" }
+                        while (c.moveToNext()) {
+                            d { "  part _id=${c.getLong(0)} ct='${c.getString(1)}' cl='${c.getString(2)}'" }
+                        }
                     }
+                } catch (e: Exception) {
+                    e({ "MmsDownloadReceiver: parts query failed" }, e)
                 }
-            } catch (e: Exception) {
-                e({ "MmsDownloadReceiver: parts query failed" }, e)
             }
 
             val address = getMmsFromAddress(context, msgId)
@@ -303,6 +307,7 @@ class MmsDownloadReceiver : BroadcastReceiver() {
      */
     @SuppressLint("UseKtx")
     private fun resolveThreadId(context: Context, address: String, fallback: Long): Long {
+        if (fallback > 0L) return fallback
         if (address.isBlank()) return fallback
 
         val digitsOnly = address.filter { it.isDigit() }
@@ -339,8 +344,10 @@ class MmsDownloadReceiver : BroadcastReceiver() {
                                 arrayOf("address"), null, null, null
                             )?.use { c2 ->
                                 if (c2.moveToFirst()) {
-                                    val stored = c2.getString(0) ?: return@use
-                                    if (stored.filter { it.isDigit() } in normalizedSet) return tid
+                                    val stored = c2.getString(0).orEmpty()
+                                    if (stored.isNotBlank() && stored.filter { it.isDigit() } in normalizedSet) {
+                                        return tid
+                                    }
                                 }
                             }
                         } catch (_: Exception) {}

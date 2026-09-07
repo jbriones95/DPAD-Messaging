@@ -23,6 +23,7 @@
 
     <!-- ─── Conversation List ─── -->
     <string name="no_conversations">No messages yet.\nPress New to start a conversation.</string>
+    <string name="loading_conversations">Loading conversations…</string>
     <string name="draft_prefix">Draft: </string>
 
     <!-- ─── Thread / Compose ─── -->
@@ -70,6 +71,10 @@
     <string name="conversation_details">Conversation Details</string>
     <string name="participants">Participants</string>
     <string name="rename_conversation">Rename Conversation</string>
+    <string name="contact_color">Contact Color</string>
+    <string name="contact_color_summary">Custom color for this contact\'s icon and messages</string>
+    <string name="choose_contact_color">Choose a color</string>
+    <string name="color_default">Default</string>
     <string name="enter_name">Enter name…</string>
     <string name="enter_recipients_hint">Add recipients with + or type a number</string>
     <string name="new_thread_hint">Type number and click center or use the + to add contacts</string>
