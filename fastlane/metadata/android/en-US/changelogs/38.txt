@@ -1,0 +1,1 @@
+- New: Hide conversation threads that have no messages (for example ones created while switching to this app as the default SMS app) so real conversations stay at the top of the list

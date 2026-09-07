@@ -95,6 +95,7 @@ fun Context.getConversationsFromTelephony(
                 val idxSnippet = cursor.getColumnIndex(Telephony.Threads.SNIPPET)
                 val idxDate = cursor.getColumnIndex(Telephony.Threads.DATE)
                 val idxRead = cursor.getColumnIndex(Telephony.Threads.READ)
+                val idxMessageCount = cursor.getColumnIndex(Telephony.Threads.MESSAGE_COUNT)
 
                 while (cursor.moveToNext()) {
                     if (conversations.size >= maxCount) break
@@ -105,6 +106,11 @@ fun Context.getConversationsFromTelephony(
                     val snippet = cursor.getString(idxSnippet) ?: ""
                     val date = cursor.getLong(idxDate)
                     val read = cursor.getInt(idxRead) == 1
+
+                    // Hide threads with no messages (e.g. created while switching
+                    // default SMS apps) so they don't push real conversations down
+                    // the list with a bogus "last message" date.
+                    if (idxMessageCount >= 0 && cursor.getInt(idxMessageCount) <= 0) continue
 
                     // Filter out own numbers so group participant lists and titles
                     // don't include the device's own phone number.
