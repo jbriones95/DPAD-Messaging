@@ -14,6 +14,18 @@ Binaries: https://github.com/jbriones95/DPAD-Messaging/releases/download/v%v/app
 AllowedAPKSigningKeys: c7eeb6b0a8089ead8ff786af45ffc545f4c4f7be38dd62655e42843eec91ed6e
 
 Builds:
+  - versionName: 0.3.7
+    versionCode: 37
+    commit: dad6e3f116727186309aead8be82fb72f1c8be76
+    subdir: app
+    gradle:
+      - yes
+    srclibs:
+      - mmslib@f84b010dcbffeaff28c32391680da25eef6ab4ba
+    prebuild:
+      - mkdir -p ../vendor
+      - rm -rf ../vendor/mmslib
+      - cp -r $$mmslib$$ ../vendor/mmslib
   - versionName: 0.3.6
     versionCode: 36
     commit: 0f1cd348de83a946861f4e239c5eac889af6663a
@@ -29,5 +41,5 @@ Builds:
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags ^v\d+\.\d+\.\d+$
-CurrentVersion: 0.3.6
-CurrentVersionCode: 36
+CurrentVersion: 0.3.7
+CurrentVersionCode: 37
