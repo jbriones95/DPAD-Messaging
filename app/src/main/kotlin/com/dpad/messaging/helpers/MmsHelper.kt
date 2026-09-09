@@ -41,9 +41,19 @@ object MmsHelper {
     /**
      * Returns the content URI string of the first image part found in the MMS message,
      * e.g. "content://mms/part/42", or null if there is no image part.
+     * @deprecated Use getMmsImagePartUris for multiple images
      */
+    @Deprecated("Use getMmsImagePartUris for multiple images", replaceWith = ReplaceWith("getMmsImagePartUris(context, msgId).firstOrNull()"))
     fun getMmsImagePartUri(context: Context, msgId: Long): String? {
-        return getCachedParts(context, msgId).imagePartUri
+        return getMmsImagePartUris(context, msgId).firstOrNull()
+    }
+
+    /**
+     * Returns a list of content URI strings for all image parts found in the MMS message.
+     * Returns empty list if there are no image parts.
+     */
+    fun getMmsImagePartUris(context: Context, msgId: Long): List<String> {
+        return getCachedParts(context, msgId).imagePartUris
     }
 
     /**
@@ -85,7 +95,7 @@ object MmsHelper {
         if (cached != null) return cached
 
         var textBody = ""
-        var imagePartUri: String? = null
+        var imagePartUris = mutableListOf<String>()
         var audioPartUri: String? = null
         var attachmentLabel = ""
 
@@ -109,9 +119,9 @@ object MmsHelper {
                         textBody = cursor.getString(idxText) ?: ""
                     }
 
-                    if (imagePartUri == null && ct.isImageMimeType()) {
+                    if (ct.isImageMimeType()) {
                         val partId = cursor.getLong(idxId)
-                        imagePartUri = "content://mms/part/$partId"
+                        imagePartUris.add("content://mms/part/$partId")
                     }
 
                     if (audioPartUri == null && ct.lowercase().startsWith("audio/")) {
@@ -128,7 +138,7 @@ object MmsHelper {
                         }
                     }
 
-                    if (textBody.isNotBlank() && imagePartUri != null && attachmentLabel.isNotBlank()) {
+                    if (textBody.isNotBlank() && imagePartUris.isNotEmpty() && attachmentLabel.isNotBlank()) {
                         break
                     }
                 }
@@ -137,7 +147,7 @@ object MmsHelper {
 
         return MmsPartCache.CachedParts(
             textBody = textBody,
-            imagePartUri = imagePartUri,
+            imagePartUris = imagePartUris,
             audioPartUri = audioPartUri,
             attachmentLabel = attachmentLabel
         ).also { MmsPartCache.put(msgId, it) }

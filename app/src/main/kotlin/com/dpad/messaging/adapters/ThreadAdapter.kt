@@ -1,5 +1,6 @@
 package com.dpad.messaging.adapters
 
+import android.content.Context
 import android.content.Intent
 import android.widget.ImageView
 import android.widget.TextView
@@ -119,8 +120,11 @@ class ThreadAdapter(
 
     override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
         super.onViewRecycled(holder)
-        val iv = holder.itemView.findViewById<android.widget.ImageView>(R.id.iv_attachment)
-        if (iv != null) Glide.with(holder.itemView.context).clear(iv)
+        val rv = holder.itemView.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.rv_attachments)
+        if (rv != null) {
+            rv.adapter = null
+            Glide.with(holder.itemView.context).clear(rv)
+        }
     }
 
     // ─── ViewHolders ───────────────────────────────────────────────────────
@@ -149,7 +153,6 @@ class ThreadAdapter(
             }
             bindMessageAttachment(
                 message = message,
-                imageView = binding.ivAttachment,
                 bubbleContainer = binding.bubbleContainer
             )
             binding.bubbleContainer.setOnLongClickListener {
@@ -176,7 +179,6 @@ class ThreadAdapter(
             applyContactBubbleColor(message)
             bindMessageAttachment(
                 message = message,
-                imageView = binding.ivAttachment,
                 bubbleContainer = binding.bubbleContainer
             )
             binding.bubbleContainer.setOnLongClickListener {
@@ -227,7 +229,6 @@ class ThreadAdapter(
 
             bindMessageAttachment(
                 message = message,
-                imageView = binding.ivAttachment,
                 bubbleContainer = binding.bubbleContainer
             )
 
@@ -273,90 +274,80 @@ class ThreadAdapter(
 
     private fun bindMessageAttachment(
         message: Message,
-        imageView: ImageView,
         bubbleContainer: View
     ) {
         if (!message.isMms) {
-            hideAttachment(imageView, bubbleContainer)
+            bubbleContainer.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.rv_attachments).apply {
+                visibility = View.GONE
+                adapter = null
+            }
             return
         }
 
-        val attachmentUri = extractFirstAttachmentUri(message.attachmentsJson)
-        if (attachmentUri.isNullOrBlank()) {
-            hideAttachment(imageView, bubbleContainer)
+        val attachmentUris = extractAttachmentUris(message.attachmentsJson)
+        if (attachmentUris.isEmpty()) {
+            bubbleContainer.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.rv_attachments).apply {
+                visibility = View.GONE
+                adapter = null
+            }
             return
         }
 
-        val context = imageView.context
-        val mimeType = runCatching {
-            AttachmentPolicy.resolveMimeType(context, Uri.parse(attachmentUri))
-        }.getOrDefault("")
-
-        val isImage = mimeType.startsWith("image/")
-        val isAudio = mimeType.startsWith("audio/") ||
-            message.body.startsWith("audio/") ||
-            attachmentUri.endsWith(".m4a", ignoreCase = true) ||
-            attachmentUri.endsWith(".mp3", ignoreCase = true) ||
-            attachmentUri.endsWith(".wav", ignoreCase = true)
-
-        imageView.visibility = View.VISIBLE
-        imageView.isFocusable = true
-        imageView.isFocusableInTouchMode = true
-        imageView.isClickable = true
-
-        if (isImage) {
-            imageView.scaleType = ImageView.ScaleType.CENTER_CROP
-            loadAttachment(imageView, attachmentUri)
-            imageView.setOnClickListener { openImageViewer(context, attachmentUri) }
-            bubbleContainer.setOnClickListener { openImageViewer(context, attachmentUri) }
-            return
-        }
-
-        Glide.with(imageView).clear(imageView)
-        imageView.scaleType = ImageView.ScaleType.CENTER_INSIDE
-        imageView.setImageResource(if (isAudio) R.drawable.ic_mic else R.drawable.ic_attach)
-        val openMimeType = when {
-            mimeType.isNotBlank() -> mimeType
-            isAudio -> "audio/*"
-            else -> "*/*"
-        }
-        imageView.setOnClickListener { openAttachment(context, attachmentUri, openMimeType) }
-        bubbleContainer.setOnClickListener { openAttachment(context, attachmentUri, openMimeType) }
+        val context = bubbleContainer.context
+        val rvAttachments = bubbleContainer.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.rv_attachments)
+        rvAttachments.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(context, androidx.recyclerview.widget.LinearLayoutManager.HORIZONTAL, false)
+        rvAttachments.adapter = AttachmentAdapter(attachmentUris, context)
+        rvAttachments.visibility = View.VISIBLE
     }
 
-    private fun hideAttachment(imageView: ImageView, bubbleContainer: View) {
-        imageView.visibility = View.GONE
-        imageView.isFocusable = false
-        imageView.isFocusableInTouchMode = false
-        imageView.isClickable = false
-        imageView.setOnClickListener(null)
-        bubbleContainer.setOnClickListener(null)
-    }
-
-    private fun extractFirstAttachmentUri(raw: String): String? {
+    private fun extractAttachmentUris(raw: String): List<String> {
         val value = raw.trim()
-        if (value.isBlank() || value == "[]") return null
-        if (!value.startsWith("[")) return value
-
+        if (value.isBlank() || value == "[]") return emptyList()
+        if (!value.startsWith("[")) return listOf(value)
         return runCatching {
             val array = JSONArray(value)
+            val list = mutableListOf<String>()
             for (index in 0 until array.length()) {
                 val candidate = array.optString(index).trim()
-                if (candidate.isNotBlank()) return@runCatching candidate
+                if (candidate.isNotBlank()) list.add(candidate)
             }
-            ""
-        }.getOrDefault("").ifBlank { null }
+            list
+        }.getOrDefault(emptyList())
     }
 
-    private fun loadAttachment(imageView: android.widget.ImageView, attachmentUri: String) {
-        val resources = imageView.resources
-        Glide.with(imageView)
-            .load(Uri.parse(attachmentUri))
-            .override(
-                resources.getDimensionPixelSize(R.dimen.attachment_image_width),
-                resources.getDimensionPixelSize(R.dimen.attachment_image_height)
-            )
-            .into(imageView)
+    private inner class AttachmentAdapter(
+        private val uris: List<String>,
+        private val context: Context
+    ) : androidx.recyclerview.widget.RecyclerView.Adapter<AttachmentAdapter.ViewHolder>() {
+
+        override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): ViewHolder {
+            val density = parent.context.resources.displayMetrics.density
+            val sizePx = (density * 120f).toInt()
+            val iv = android.widget.ImageView(parent.context).apply {
+                layoutParams = android.view.ViewGroup.LayoutParams(sizePx, sizePx)
+                scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+                isFocusable = true
+                isFocusableInTouchMode = true
+                isClickable = true
+            }
+            return ViewHolder(iv)
+        }
+
+        override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+            val uri = uris[position]
+            val iv = holder.itemView as android.widget.ImageView
+            iv.apply {
+                scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+                Glide.with(context).load(android.net.Uri.parse(uri))
+                    .override(120, 120)
+                    .into(this)
+                setOnClickListener { openImageViewer(context, uri) }
+            }
+        }
+
+        override fun getItemCount() = uris.size
+
+        inner class ViewHolder(view: android.view.View) : androidx.recyclerview.widget.RecyclerView.ViewHolder(view)
     }
 
     inner class FailedViewHolder(

@@ -8,10 +8,11 @@ import android.graphics.drawable.StateListDrawable
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.widget.GridLayout
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.core.graphics.ColorUtils
+import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.dpad.messaging.R
 
 /**
@@ -121,77 +122,93 @@ object ContactColors {
         onSelected: (Int?) -> Unit
     ) {
         val density = context.resources.displayMetrics.density
-        val swatchSizePx = (density * 48f).toInt()
         val spacingPx = (density * 8f).toInt()
         val paddingPx = (density * 16f).toInt()
 
-        val rows = (PALETTE.size + COLUMNS - 1) / COLUMNS
+        val colors = PALETTE.toList() + null  // null represents "default"
+        val columns = 4
 
-        val grid = GridLayout(context).apply {
-            columnCount = COLUMNS
-            rowCount = rows + 1
+        val recycler = RecyclerView(context).apply {
+            layoutManager = GridLayoutManager(context, columns)
+            adapter = ColorPickerAdapter(colors, currentColor, onSelected)
             setPadding(paddingPx, paddingPx, paddingPx, paddingPx)
-        }
-
-        lateinit var dialog: AlertDialog
-
-        val swatches = PALETTE.mapIndexed { index, color ->
-            View(context).apply {
-                layoutParams = GridLayout.LayoutParams(
-                    GridLayout.spec(index / COLUMNS),
-                    GridLayout.spec(index % COLUMNS)
-                ).apply {
-                    width = swatchSizePx
-                    height = swatchSizePx
-                    setMargins(spacingPx, spacingPx, spacingPx, spacingPx)
-                }
-                background = swatchDrawable(color)
-                isFocusable = true
-                isFocusableInTouchMode = true
-                setOnClickListener {
-                    dialog.dismiss()
-                    onSelected(color)
-                }
+            addItemDecoration(SwatchItemDecoration(spacingPx))
+            // Limit max height to fit on small screens (Sonim XP3900: 320dp height)
+            val maxHeight = (context.resources.displayMetrics.heightPixels * 0.7f).toInt()
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).also { params ->
+                params.height = maxHeight.coerceAtMost(params.height)
             }
         }
 
-        val defaultCell = TextView(context).apply {
-            text = context.getString(R.string.color_default)
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            setPadding(paddingPx, 0, paddingPx, 0)
-            layoutParams = GridLayout.LayoutParams(
-                GridLayout.spec(rows),
-                GridLayout.spec(0, COLUMNS)
-            ).apply {
-                width = ViewGroup.LayoutParams.MATCH_PARENT
-                height = swatchSizePx
-                setMargins(spacingPx, spacingPx, spacingPx, spacingPx)
-            }
-            background = swatchDrawable(0xFF607D8B.toInt())
-            isFocusable = true
-            isFocusableInTouchMode = true
-            setOnClickListener {
-                dialog.dismiss()
-                onSelected(null)
-            }
-        }
-
-        swatches.forEach { grid.addView(it) }
-        grid.addView(defaultCell)
-
-        dialog = AlertDialog.Builder(context)
+        val dialog = AlertDialog.Builder(context)
             .setTitle(title)
-            .setView(grid)
+            .setView(recycler)
             .setNegativeButton(android.R.string.cancel, null)
             .create()
 
         dialog.setOnShowListener {
-            val target = currentColor?.let { PALETTE.indexOf(it) } ?: -1
-            val focusTarget = if (target >= 0) swatches[target] else defaultCell
-            focusTarget.requestFocus()
+            val target = currentColor?.let { PALETTE.indexOf(it) } ?: colors.size - 1
+            recycler.layoutManager?.scrollToPosition(target)
+            recycler.getChildAt(0)?.requestFocus()
+            // Ensure dialog fits on screen
+            dialog.window?.apply {
+                setLayout(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                // Limit height to 70% of screen height
+                val maxHeight = (context.resources.displayMetrics.heightPixels * 0.7f).toInt()
+                if (attributes.height > maxHeight) {
+                    attributes.height = maxHeight
+                }
+            }
         }
 
         dialog.show()
+    }
+
+    private class ColorPickerAdapter(
+        private val colors: List<Int?>,
+        private val currentColor: Int?,
+        private val onSelected: (Int?) -> Unit
+    ) : RecyclerView.Adapter<ColorPickerAdapter.ViewHolder>() {
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
+            val density = parent.context.resources.displayMetrics.density
+            val swatchSizePx = (density * 48f).toInt()
+            val view = View(parent.context).apply {
+                layoutParams = ViewGroup.LayoutParams(swatchSizePx, swatchSizePx)
+                isFocusable = true
+                isFocusableInTouchMode = true
+            }
+            return ViewHolder(view)
+        }
+
+        override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+            val color = colors[position]
+            holder.itemView.apply {
+                background = if (color != null) swatchDrawable(color) else swatchDrawable(0xFF607D8B.toInt())
+                setOnClickListener {
+                    onSelected(color)
+                }
+                if (color == currentColor) {
+                    requestFocus()
+                }
+            }
+        }
+
+        override fun getItemCount() = colors.size
+
+        class ViewHolder(view: View) : RecyclerView.ViewHolder(view)
+    }
+
+    private class SwatchItemDecoration(private val spacingPx: Int) :
+        RecyclerView.ItemDecoration() {
+        override fun getItemOffsets(outRect: android.graphics.Rect, view: View, parent: RecyclerView, state: RecyclerView.State) {
+            outRect.set(spacingPx, spacingPx, spacingPx, spacingPx)
+        }
     }
 }

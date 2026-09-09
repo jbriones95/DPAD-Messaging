@@ -417,11 +417,25 @@ class ThreadActivity : BaseActivity() {
         }
         binding.etMessage.setOnKeyListener { _, keyCode, event ->
             if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+            val typingWithIme = binding.etMessage.isTypingWithIme()
             when (keyCode) {
-                KeyEvent.KEYCODE_DPAD_UP    -> { goUpFromCompose(); true }
-                KeyEvent.KEYCODE_DPAD_CENTER -> { insertNewLine(); true }
+                KeyEvent.KEYCODE_DPAD_UP -> {
+                    // UP always navigates in app (toolbar, chips, attachment)
+                    goUpFromCompose(); true
+                }
+                KeyEvent.KEYCODE_DPAD_CENTER -> {
+                    // CENTER inserts newline in app
+                    insertNewLine(); true
+                }
                 KeyEvent.KEYCODE_ENTER,
-                KeyEvent.KEYCODE_NUMPAD_ENTER -> { insertNewLine(); true }
+                KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                    insertNewLine(); true
+                }
+                KeyEvent.KEYCODE_DPAD_LEFT,
+                KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    // LEFT/RIGHT: let keyboard handle when typing (candidate scrolling)
+                    if (typingWithIme) false else true
+                }
                 else -> false
             }
         }

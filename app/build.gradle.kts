@@ -20,8 +20,8 @@ android {
         applicationId = "com.dpadsms"
         minSdk = 23
         targetSdk = 34
-        versionCode = 38
-        versionName = "0.3.8"
+        versionCode = 39
+        versionName = "0.3.9"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

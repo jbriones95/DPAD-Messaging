@@ -52,15 +52,14 @@
             android:textIsSelectable="false"
             android:textSize="@dimen/text_size_normal" />
 
-        <!-- MMS image attachment -->
-        <ImageView
-            android:id="@+id/iv_attachment"
-            android:layout_width="@dimen/attachment_image_width"
-            android:layout_height="@dimen/attachment_image_height"
+        <!-- MMS image attachment(s) - RecyclerView for multiple images -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rv_attachments"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/padding_tiny"
-            android:contentDescription="@string/message_attachment_preview"
-            android:focusable="false"
-            android:scaleType="centerCrop"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
             android:visibility="gone" />
 
         <TextView

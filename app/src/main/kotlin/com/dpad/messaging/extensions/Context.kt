@@ -345,9 +345,7 @@ suspend fun Context.getMessagesForThread(
                 val body = MmsHelper.getMmsDisplayBody(this, id, subject)
 
                 // Store first supported media part URI for ThreadAdapter preview.
-                val attachmentsJson = MmsHelper.getMmsImagePartUri(this, id)
-                    ?: MmsHelper.getMmsAudioPartUri(this, id)
-                    ?: "[]"
+                val attachmentsJson = MmsHelper.getMmsImagePartUris(this, id).joinToString(",")
 
                 messages.add(
                     Message(

@@ -1,0 +1,4 @@
+- New: Show all images attached to an MMS message side by side instead of only the first one
+ - Fix: Contact color picker resizes to fit small screens so every color swatch stays reachable
+ - Fix: On-screen keyboards (e.g. TT9) keep LEFT/RIGHT for candidate scrolling while UP/DOWN navigate the thread
+ - Improve: MMS attachments load through a scrollable gallery inside the message bubble

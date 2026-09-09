@@ -12,7 +12,7 @@ object MmsPartCache {
 
     data class CachedParts(
         val textBody: String,
-        val imagePartUri: String?,
+        val imagePartUris: List<String>,
         val audioPartUri: String?,
         val attachmentLabel: String
     )
