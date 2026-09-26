@@ -6,10 +6,9 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
-import android.provider.Telephony
 import android.util.Log
 import com.dpad.messaging.BuildConfig
-import com.klinker.android.send_message.Message as KlinkerMessage
+import com.google.android.mms.MMSPart
 import com.klinker.android.send_message.Settings as KlinkerSettings
 import com.klinker.android.send_message.Transaction as KlinkerTransaction
 import com.dpad.messaging.extensions.getOwnPhoneNumbers
@@ -17,24 +16,22 @@ import com.dpad.messaging.receivers.MmsSentReceiver
 import java.io.ByteArrayOutputStream
 
 /**
- * Sends MMS messages via mmslib Transaction for unified, carrier-compatible handling.
+ * Sends MMS messages by composing the PDU, persisting it to the system MMS provider,
+ * and delegating transport to the platform via `SmsManager.sendMultimediaMessage()`.
  *
- * Phase 2 unified approach:
- *  All MMS sends (text-only group, text-only 1:1, media 1:1, media group) go through
- *  mmslib Transaction which handles:
- *    - PDU composition
- *    - Provider insertion
- *    - System MMS sending via SmsManager.sendMultimediaMessage()
- *    - Sent/delivery callbacks
+ * The send path deliberately performs no MMSC resolution of its own. MMSC URL, WAP
+ * gateway, proxy host/port, the `mms` PDN and per-carrier `mms_config.xml` overrides
+ * are all resolved by the platform telephony stack at send time, so the same code
+ * works on every carrier. Guessing an endpoint here is what previously broke sending
+ * on non-AT&T networks.
  *
- * Flow for all sends:
- *  1. Filter own numbers from recipient list
- *  2. Build Message object (text + optional image)
- *  3. Create Transaction with Settings (useSystemSending=true, group=true/false, etc.)
- *  4. Attach explicit broadcast intent for MmsSentReceiver
- *  5. Send via transaction.sendNewMessage()
+ * Flow:
+ *  1. Filter own numbers from the recipient list
+ *  2. Read and downscale each attachment into media parts
+ *  3. Persist the PDU to `content://mms/outbox`
+ *  4. Hand the persisted row to the platform and await the MmsSentReceiver callback
  *
- * Must be called from a background thread — performs file I/O and network operations.
+ * Must be called from a background thread — performs file I/O and provider writes.
  */
 object MmsSender {
 
@@ -49,42 +46,40 @@ object MmsSender {
     // ── Public API ────────────────────────────────────────────────────────────
 
     /**
-     * Sends an MMS with the given text body and optional image attachment via mmslib.
+     * Initialises the vendored library's receive-side settings.
      *
-     * Both text-only and media messages are unified through the mmslib Transaction path,
-     * which ensures carrier compatibility and proper provider bookkeeping.
+     * The library couples its send and receive transports behind a single
+     * `useSystemSending` flag. Sending no longer uses the library transaction, so
+     * enabling this flag selects Android's platform MMS download for receive.
      *
-     * @param context        Application context.
-     * @param recipients     Recipient phone number(s). Multiple numbers = group MMS.
-     * @param body           Text body (may be blank when image-only).
-     * @param attachmentUri  Content URI of media/file to attach, or null for text-only MMS.
-     * @param threadId       Telephony thread ID — passed to sendNewMessage so the message
-     *                       lands in the correct existing thread.
-     * @param subscriptionId SIM subscription ID (-1 = system default).
+     * This no longer affects sending: [send] no longer goes through the library's
+     * `Transaction`, so pinning the flag cannot drag MMS send back onto the
+     * in-process HTTP client.
      */
-    /**
-     * Forces the library's self-contained MMS receive path (bypasses the system
-     * MmsService / SmsManager.downloadMultimediaMessage handoff, which never
-     * writes klinker's temp file on this ROM).
-     *
-     * PushReceiver and TransactionService choose their download method from the
-     * STATIC Transaction.settings. This must be initialized at app startup (and
-     * re-initialized / kept false by every send path), otherwise the library
-     * falls back to pref "system_mms_sending" = true and receive breaks.
-     */
-    fun initLibraryReceive(context: Context) {
+    fun initLibraryReceive() {
         val settings = KlinkerSettings().apply {
-            setUseSystemSending(false)
+            setUseSystemSending(true)
             setGroup(true)
             setDeliveryReports(Prefs.get().deliveryReports)
         }
-        applyCarrierMmsConfig(context, settings)
         KlinkerTransaction.settings = settings
         if (BuildConfig.DEBUG) {
-            Log.d(TAG, "MmsSender: initialized klinker static settings (useSystemSending=false)")
+            Log.d(TAG, "MmsSender: initialised library receive settings (send path bypasses library)")
         }
     }
 
+    /**
+     * Sends an MMS with the given text body and optional attachments.
+     *
+     * @param context        Application context.
+     * @param recipients     Recipient phone number(s). Multiple numbers = group MMS.
+     * @param body           Text body (may be blank when media-only).
+     * @param attachmentUri  Content URI of a single media/file to attach, or null.
+     * @param attachmentUris All media URIs to attach, in order.
+     * @param threadId       Telephony thread ID the message should land in.
+     * @param subscriptionId SIM subscription ID (negative = system default).
+     * @param scheduledMessageId Room id of the scheduled message, when applicable.
+     */
     fun send(
         context: Context,
         recipients: List<String>,
@@ -134,156 +129,57 @@ object MmsSender {
         subscriptionId: Int,
         scheduledMessageId: Long?
     ) {
-        val message = KlinkerMessage(body, recipients.toTypedArray())
+        val parts = ArrayList<MMSPart>(attachmentUris.size)
+        var hasImage = false
 
-        // Add all attachments to a single MMS (multipart/mixed) per library pattern
         for (uri in attachmentUris) {
-            val mimeType = context.contentResolver.getType(uri)?.lowercase() ?: "application/octet-stream"
-            val bytes = if (mimeType.startsWith("image/")) {
-                compressImage(context, uri)
-            } else {
-                readAttachment(context, uri)
+            val rawMimeType = context.contentResolver.getType(uri)?.lowercase() ?: "application/octet-stream"
+            val isImage = rawMimeType.startsWith("image/")
+            val bytes = if (isImage) compressImage(context, uri) else readAttachment(context, uri)
+            if (bytes == null) {
+                Log.w(TAG, "MmsSender: unable to read attachment from uri=$uri")
+                continue
             }
 
-            if (bytes != null) {
-                try {
-                    val normalizedMime = when {
-                        mimeType.startsWith("image/") -> "image/jpeg"
-                        mimeType == "text/plain" -> "application/txt"
-                        else -> mimeType
-                    }
-                    val attachmentName = resolveAttachmentName(context, uri, normalizedMime)
-                    message.addMedia(bytes, normalizedMime, attachmentName)
-                    if (BuildConfig.DEBUG) Log.d(TAG, "MmsSender: added attachment mime=$normalizedMime name=$attachmentName bytes=${bytes.size}")
-                } catch (e: Exception) {
-                    if (BuildConfig.DEBUG) Log.e(TAG, "MmsSender: failed to add attachment", e)
+            hasImage = hasImage || isImage
+            val normalizedMime = when {
+                isImage -> "image/jpeg"
+                rawMimeType == "text/plain" -> "application/txt"
+                else -> rawMimeType
+            }
+            val attachmentName = resolveAttachmentName(context, uri, normalizedMime)
+            parts.add(
+                MMSPart().apply {
+                    name = attachmentName
+                    fileName = attachmentName
+                    mimeType = normalizedMime
+                    data = bytes
                 }
-            } else {
-                if (BuildConfig.DEBUG) Log.w(TAG, "MmsSender: unable to read attachment data from uri=$uri")
+            )
+            if (BuildConfig.DEBUG) {
+                Log.d(TAG, "MmsSender: added attachment mime=$normalizedMime name=$attachmentName bytes=${bytes.size}")
             }
         }
 
-        // Create Settings with desired behavior
-        val settings = KlinkerSettings().apply {
-            setUseSystemSending(false)
-            setGroup(recipients.size > 1)
-            setDeliveryReports(Prefs.get().deliveryReports)
-            if (subscriptionId >= 0) {
-                setSubscriptionId(subscriptionId)
-            }
-        }
-        applyCarrierMmsConfig(context, settings)
-
-        // Create Transaction and attach callback
-        val transaction = KlinkerTransaction(context, settings)
-        val hasImage = attachmentUris.any { uri ->
-            runCatching { context.contentResolver.getType(uri)?.startsWith("image/", ignoreCase = true) == true }
-                .getOrDefault(false)
-        }
         val sentIntent = Intent(ACTION_MMS_SENT, null, context, MmsSentReceiver::class.java).apply {
             putExtra(EXTRA_THREAD_ID, threadId)
             putExtra("extra_has_image", hasImage)
-            putExtra("extra_library_sender", true)
             if (scheduledMessageId != null) {
                 putExtra("extra_scheduled_message_id", scheduledMessageId)
             }
         }
-        transaction.setExplicitBroadcastForSentMms(sentIntent)
 
-        // Send via mmslib — pass threadId so message lands in the correct thread
-        try {
-            if (BuildConfig.DEBUG) Log.d(TAG, "MmsSender: sending via mmslib recipients=$recipients group=${recipients.size > 1} subId=$subscriptionId threadId=$threadId")
-            transaction.sendNewMessage(message)
-            if (BuildConfig.DEBUG) Log.d(TAG, "MmsSender: sent successfully")
-        } catch (e: Exception) {
-            if (BuildConfig.DEBUG) Log.e(TAG, "MmsSender: send failed", e)
-        }
-    }
-
-    /**
-     * Mirrors the reference smsmms setup: configure MMSC/proxy/port from APN so
-     * carrier routing works even on ROMs where defaults are incomplete.
-     */
-    private fun applyCarrierMmsConfig(context: Context, settings: KlinkerSettings) {
-        var mmsc = ""
-        var proxy = ""
-        var port = ""
-
-        runCatching {
-            val projection = arrayOf(
-                Telephony.Carriers.MMSC,
-                Telephony.Carriers.MMSPROXY,
-                Telephony.Carriers.MMSPORT,
-                Telephony.Carriers.TYPE,
-                Telephony.Carriers.CURRENT
-            )
-            val selection = "${Telephony.Carriers.CURRENT}=1"
-
-            context.contentResolver.query(
-                Telephony.Carriers.CONTENT_URI,
-                projection,
-                selection,
-                null,
-                "_id DESC"
-            )?.use { cursor ->
-                while (cursor.moveToNext()) {
-                    val type = cursor.getString(3).orEmpty()
-                    if (!type.contains("mms", ignoreCase = true) && type != "*") {
-                        continue
-                    }
-                    mmsc = cursor.getString(0).orEmpty().trim()
-                    proxy = cursor.getString(1).orEmpty().trim()
-                    port = cursor.getString(2).orEmpty().trim()
-                    if (mmsc.isNotBlank()) break
-                }
-            }
-        }.onFailure {
-            if (BuildConfig.DEBUG) Log.w(TAG, "MmsSender: unable to query APN table for MMS config", it)
-        }
-
-        // Fallback to user-configured proxy when APN table is blocked by OEM policy.
-        if (proxy.isBlank()) {
-            val prefProxy = Prefs.get().mmsProxyHost.trim()
-            if (prefProxy.isNotBlank()) {
-                proxy = prefProxy
-                val prefPort = Prefs.get().mmsProxyPort
-                if (prefPort > 0) {
-                    port = prefPort.toString()
-                }
-            }
-        }
-
-        // Fallback MMSC for carriers where the APN table is blocked entirely.
-        if (mmsc.isBlank()) {
-            mmsc = "http://mmsc.mobile.att.net"
-            if (proxy.isBlank()) proxy = "proxy.mobile.att.net"
-            if (port.isBlank()) port = "80"
-            if (BuildConfig.DEBUG) {
-                Log.i(TAG, "MmsSender: APN table unavailable, using AT&T MMSC fallback $mmsc proxy=$proxy:$port")
-            }
-        }
-
-        if (mmsc.isNotBlank()) settings.setMmsc(mmsc)
-        if (proxy.isNotBlank()) settings.setProxy(proxy)
-        if (port.isNotBlank()) settings.setPort(port)
-
-        // Seed the mmslib default SharedPreferences consumed by ApnSettings.load()
-        // so the in-process MMS sender uses our resolved MMSC/proxy/port directly
-        // (the APN table is not queryable on this device without carrier privileges).
-        android.preference.PreferenceManager.getDefaultSharedPreferences(context)
-            .edit()
-            .putString("mmsc_url", mmsc)
-            .putString("mms_proxy", proxy)
-            .putString("mms_port", port)
-            .apply()
-
-        // Keep headers explicit for stricter carrier gateways.
-        settings.setAgent("Android-Mms/2.0")
-        settings.setUaProfTagName("x-wap-profile")
-        settings.setUserProfileUrl("http://www.google.com/oha/rdf/ua-profile-20080331.xml")
-
-        if (BuildConfig.DEBUG) {
-            Log.d(TAG, "MmsSender: carrier config applied mmsc='${mmsc.take(80)}' proxy='$proxy' port='$port'")
+        val messageUri = MmsTransmitter.send(
+            context = context,
+            recipients = recipients,
+            body = body,
+            parts = parts,
+            subscriptionId = subscriptionId,
+            groupMms = recipients.size > 1,
+            sentIntent = sentIntent
+        )
+        if (messageUri == null) {
+            Log.e(TAG, "MmsSender: send produced no persisted message; delivery not attempted")
         }
     }
 

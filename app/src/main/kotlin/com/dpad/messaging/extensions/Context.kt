@@ -260,6 +260,8 @@ suspend fun Context.getMessagesForThread(
     contactHelper: ContactHelper,
     limit: Int = Int.MAX_VALUE
 ): List<Message> {
+    if (threadId <= 0L || threadId == Long.MAX_VALUE) return emptyList()
+
     val cappedLimit = if (limit <= 0) Int.MAX_VALUE else limit
     val messages = mutableListOf<Message>()
 

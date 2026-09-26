@@ -70,9 +70,7 @@ object BackupManager {
                 appAccent = prefs.appAccent,
                 dateFormat = prefs.dateFormat,
                 timeFormat = prefs.timeFormat,
-                uiScale = prefs.uiScale,
-                mmsProxyHost = prefs.mmsProxyHost,
-                mmsProxyPort = prefs.mmsProxyPort,
+    uiScale = prefs.uiScale,
                 mutedThreads = prefs.getMutedThreadIds().map { it.toString() }.toSet(),
                 pinnedThreads = prefs.getPinnedThreadIds().map { it.toString() }.toSet(),
                 archivedThreads = prefs.getArchivedThreadIds().map { it.toString() }.toSet()
@@ -159,8 +157,6 @@ object BackupManager {
             prefs.dateFormat = p.dateFormat
             prefs.timeFormat = p.timeFormat
             prefs.uiScale = p.uiScale
-            prefs.mmsProxyHost = p.mmsProxyHost
-            prefs.mmsProxyPort = p.mmsProxyPort
             for (id in p.mutedThreads) {
                 id.toLongOrNull()?.let { prefs.setThreadMuted(it, true) }
             }

@@ -16,8 +16,10 @@ data class BackupPreferences(
     val dateFormat: String,
     val timeFormat: String,
     val uiScale: String,
-    val mmsProxyHost: String,
-    val mmsProxyPort: Int,
+    // Retained only so backups written by older versions still parse. MMS transport
+    // is delegated to the platform, which resolves the MMSC and proxy itself.
+    val mmsProxyHost: String = "",
+    val mmsProxyPort: Int = 0,
     val mutedThreads: Set<String>,
     val pinnedThreads: Set<String>,
     val archivedThreads: Set<String>

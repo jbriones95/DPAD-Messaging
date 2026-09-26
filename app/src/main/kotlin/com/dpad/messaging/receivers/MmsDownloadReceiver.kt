@@ -155,6 +155,7 @@ class MmsDownloadReceiver : BroadcastReceiver() {
             var msgId = -1L
             var threadId = -1L
             var subject = ""
+            var mType = -1
 
             if (knownMsgId > 0L) {
                 try {
@@ -171,7 +172,7 @@ class MmsDownloadReceiver : BroadcastReceiver() {
                                 msgId = cursor.getLong(cursor.getColumnIndexOrThrow("_id"))
                                 threadId = cursor.getLong(cursor.getColumnIndexOrThrow("thread_id"))
                                 subject = cursor.getString(cursor.getColumnIndexOrThrow("sub")) ?: ""
-                                val mType = cursor.getInt(cursor.getColumnIndexOrThrow("m_type"))
+                                mType = cursor.getInt(cursor.getColumnIndexOrThrow("m_type"))
                                 val box = cursor.getInt(cursor.getColumnIndexOrThrow("msg_box"))
                                 d { "MmsDownloadReceiver: direct query msgId=$msgId mType=$mType msg_box=$box threadId=$threadId" }
 
@@ -210,6 +211,7 @@ class MmsDownloadReceiver : BroadcastReceiver() {
                             msgId = cursor.getLong(cursor.getColumnIndexOrThrow("_id"))
                             threadId = cursor.getLong(cursor.getColumnIndexOrThrow("thread_id"))
                             subject = cursor.getString(cursor.getColumnIndexOrThrow("sub")) ?: ""
+                            mType = cursor.getInt(cursor.getColumnIndexOrThrow("m_type"))
                             d { "MmsDownloadReceiver: fallback found msgId=$msgId threadId=$threadId" }
                         }
                     }
@@ -221,6 +223,11 @@ class MmsDownloadReceiver : BroadcastReceiver() {
             if (msgId < 0L) {
                 w { "MmsDownloadReceiver: still no MMS row - posting RefreshConversations only" }
                 EventBus.getDefault().post(RefreshConversations())
+                return
+            }
+
+            if (mType != 132 || threadId <= 0L || threadId == Long.MAX_VALUE) {
+                d { "MmsDownloadReceiver: ignoring non-final MMS row msgId=$msgId mType=$mType threadId=$threadId" }
                 return
             }
 

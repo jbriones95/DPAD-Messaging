@@ -231,7 +231,9 @@ object LibraryUnifiedMessageSender : UnifiedMessageSender {
         if (OutgoingFilter.checkAndRecord(context, listOf(phoneNumber), scheduledMessageId).isNotEmpty()) return
 
         val settings = KlinkerSettings().apply {
-            setUseSystemSending(false)
+            // Transaction.settings is shared with the MMS WAP-push receiver.
+            // Keep platform MMS receive enabled even when this transaction sends SMS.
+            setUseSystemSending(true)
             setGroup(false)
             setDeliveryReports(Prefs.get().deliveryReports)
             if (subscriptionId >= 0) setSubscriptionId(subscriptionId)

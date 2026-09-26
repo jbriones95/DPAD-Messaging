@@ -25,4 +25,14 @@ object MmsPartCache {
     fun put(msgId: Long, value: CachedParts) {
         cache.put(msgId, value)
     }
+
+    @Synchronized
+    fun remove(msgId: Long) {
+        cache.remove(msgId)
+    }
+
+    @Synchronized
+    fun clear() {
+        cache.evictAll()
+    }
 }

@@ -29,7 +29,7 @@ class App : Application() {
         database = MessagesDatabase.getInstance(this)
         contactHelper = ContactHelper(this)
         Prefs.init(this)
-        MmsSender.initLibraryReceive(this)
+        MmsSender.initLibraryReceive()
         ThemeManager.applyThemeMode(Prefs.get().appThemeMode)
         refreshNotificationChannels()
         AppCoroutineScopes.io.launch {

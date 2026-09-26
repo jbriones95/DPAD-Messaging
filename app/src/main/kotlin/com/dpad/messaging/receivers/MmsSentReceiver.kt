@@ -7,8 +7,11 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.provider.Telephony
+import android.telephony.SmsManager
 import android.util.Log
 import com.dpad.messaging.App
+import com.dpad.messaging.BuildConfig
 import com.dpad.messaging.models.Message
 import com.dpad.messaging.events.RefreshConversations
 import com.dpad.messaging.events.RefreshMessages
@@ -19,18 +22,24 @@ import org.greenrobot.eventbus.EventBus
 import java.io.File
 
 /**
- * Receives the result PendingIntent fired by mmslib Transaction via SmsManager.sendMultimediaMessage().
+ * Receives the result PendingIntent fired by [com.dpad.messaging.helpers.MmsTransmitter]
+ * after the platform reports the outcome of `SmsManager.sendMultimediaMessage()`.
  *
- * With mmslib:
- *  - mmslib handles all provider persistence (inserts, updates to sent/failed)
- *  - We receive this callback to refresh the UI
- *  - resultCode = RESULT_OK (-1) = sent, otherwise = failed
- *  - threadId is provided for UI refresh targeting
+ * Each in-flight message gets a PendingIntent keyed on its provider row id, and the row
+ * URI is carried as the intent's data, so concurrent sends are reported independently
+ * and can be resolved exactly.
  *
- * This receiver logs the result and posts EventBus events for UI refresh.
+ *  - resultCode = Activity.RESULT_OK (-1) means sent. Any other value is the
+ *    `SmsManager.MMS_ERROR_*` code itself: the platform passes the error as the broadcast
+ *    result code, not as an extra (see mmslib `MmsRequest.processResult`, which calls
+ *    `pendingIntent.send(context, result, fillIn)`).
+ *  - `SmsManager.EXTRA_MMS_HTTP_STATUS` is supplied only when the MMSC itself rejected
+ *    the request with an HTTP error.
+ *  - threadId is provided for UI refresh targeting.
  */
 class MmsSentReceiver : BroadcastReceiver() {
     companion object {
+        private const val TAG = "DPAD_MSG"
         private const val EXTRA_FILE_PATH = "file_path"
         private const val EXTRA_SCHEDULED_MESSAGE_ID = "extra_scheduled_message_id"
     }
@@ -51,30 +60,45 @@ class MmsSentReceiver : BroadcastReceiver() {
         val threadId = intent.getLongExtra(MmsSender.EXTRA_THREAD_ID, -1L)
         val hasImage = intent.getBooleanExtra("extra_has_image", false)
         val isSuccess = resultCode == Activity.RESULT_OK
-        val targetMsgBox = if (isSuccess) 2 else 5 // 2=sent, 5=failed
+        // The app owns msg_box on this path (mmslib's own system-send receiver does the
+        // same), and the UI reads it to tell a pending bubble from a terminal one. We
+        // therefore mark failures explicitly rather than leaving the row in the outbox,
+        // which matches what the previous in-process transport did via SendRequest.
+        val targetMsgBox = if (isSuccess) {
+            Telephony.Mms.MESSAGE_BOX_SENT
+        } else {
+            Telephony.Mms.MESSAGE_BOX_FAILED
+        }
         val scheduledMessageId = intent.getLongExtra(EXTRA_SCHEDULED_MESSAGE_ID, -1L)
+        // The platform reports the MMS error code as the broadcast result code, and
+        // supplies an HTTP status only when the MMSC itself rejected the request.
+        val httpStatus = intent.getIntExtra(SmsManager.EXTRA_MMS_HTTP_STATUS, -1)
 
         val contentUri = extractContentUri(intent)
         if (contentUri != null) {
             updateMsgBoxByUri(context, contentUri, targetMsgBox)
         } else if (threadId > 0) {
+            Log.w(TAG, "MmsSentReceiver: no message URI on callback; falling back to thread scan")
             updateLatestOutboxForThread(context, threadId, targetMsgBox)
         }
 
         cleanupTempPduFile(intent)
 
-        val extras = intent.extras?.keySet()?.sorted()?.joinToString() ?: "<none>"
-        Log.d(
-            "DPAD_MSG",
-            "MmsSentReceiver.onReceive() threadId=$threadId hasImage=$hasImage resultCode=$resultCode isSuccess=$isSuccess extras=$extras"
-        )
+        if (BuildConfig.DEBUG) {
+            Log.d(
+                TAG,
+                "MmsSentReceiver: threadId=$threadId hasImage=$hasImage resultCode=$resultCode " +
+                    "httpStatus=$httpStatus uri=$contentUri"
+            )
+        }
 
-        // mmslib has already updated the provider (inserted and updated msg_box)
-        // Our job is to refresh the UI so the message appears with correct status
+        if (!isSuccess) {
+            Log.w(TAG, "MmsSentReceiver: MMS send failed resultCode=$resultCode httpStatus=$httpStatus")
+        }
+
         EventBus.getDefault().post(RefreshConversations())
         if (threadId > 0) {
             EventBus.getDefault().post(RefreshMessages(threadId))
-            Log.d("DPAD_MSG", "MmsSentReceiver: posted refresh events for threadId=$threadId")
         }
 
         if (scheduledMessageId > 0L) {
@@ -129,29 +153,32 @@ class MmsSentReceiver : BroadcastReceiver() {
         try {
             context.contentResolver.update(
                 uri,
-                ContentValues().apply { put("msg_box", msgBox) },
+                ContentValues().apply { put(Telephony.Mms.MESSAGE_BOX, msgBox) },
                 null,
                 null
             )
-            Log.d("DPAD_MSG", "MmsSentReceiver: updated uri=$uri msg_box=$msgBox")
+            Log.d(TAG, "MmsSentReceiver: updated uri=$uri msg_box=$msgBox")
         } catch (e: Exception) {
-            Log.w("DPAD_MSG", "MmsSentReceiver: failed to update uri=$uri", e)
+            Log.w(TAG, "MmsSentReceiver: failed to update uri=$uri", e)
         }
     }
 
+    /**
+     * Last-resort path for callbacks that arrive without row data. The new transmitter
+     * always sets the row URI as the intent data, so this should be unreachable; it is
+     * retained only so an unexpected callback cannot leave rows stranded in the outbox.
+     */
     private fun updateLatestOutboxForThread(context: Context, threadId: Long, msgBox: Int) {
         val mmsUri = Uri.parse("content://mms")
         try {
-            // Update ALL outbox rows for the thread so multi-attachment sends
-            // don't leave extra rows stuck in msg_box=4.
             context.contentResolver.update(
                 mmsUri,
-                ContentValues().apply { put("msg_box", msgBox) },
-                "thread_id = ? AND msg_box = 4",
-                arrayOf(threadId.toString())
+                ContentValues().apply { put(Telephony.Mms.MESSAGE_BOX, msgBox) },
+                "${Telephony.Mms.THREAD_ID} = ? AND ${Telephony.Mms.MESSAGE_BOX} = ?",
+                arrayOf(threadId.toString(), Telephony.Mms.MESSAGE_BOX_OUTBOX.toString())
             )
         } catch (e: Exception) {
-            Log.w("DPAD_MSG", "MmsSentReceiver: failed fallback update for threadId=$threadId", e)
+            Log.w(TAG, "MmsSentReceiver: failed fallback update for threadId=$threadId", e)
         }
     }
 
@@ -161,9 +188,9 @@ class MmsSentReceiver : BroadcastReceiver() {
 
         runCatching {
             val deleted = File(filePath).delete()
-            Log.d("DPAD_MSG", "MmsSentReceiver: temp file cleanup path=$filePath deleted=$deleted")
+            Log.d(TAG, "MmsSentReceiver: temp file cleanup path=$filePath deleted=$deleted")
         }.onFailure { e ->
-            Log.w("DPAD_MSG", "MmsSentReceiver: temp file cleanup failed path=$filePath", e)
+            Log.w(TAG, "MmsSentReceiver: temp file cleanup failed path=$filePath", e)
         }
     }
 }

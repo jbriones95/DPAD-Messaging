@@ -2,6 +2,8 @@ package com.dpad.messaging.helpers
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
+import com.dpad.messaging.BuildConfig
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.nio.charset.StandardCharsets
@@ -12,6 +14,8 @@ import java.nio.charset.StandardCharsets
  * All functions must be called from a background thread.
  */
 object MmsHelper {
+
+    private const val TAG = "DPAD_MSG"
 
     private val IMAGE_MIME_TYPES = setOf(
         "image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp"
@@ -74,11 +78,17 @@ object MmsHelper {
 
     private fun getCachedParts(context: Context, msgId: Long): MmsPartCache.CachedParts {
         val cached = MmsPartCache.get(msgId)
-        if (cached != null) return cached
+        if (cached != null) {
+            if (BuildConfig.DEBUG) {
+                Log.d(TAG, "getCachedParts($msgId) CACHE HIT body=${cached.textBody.length} imgs=${cached.imagePartUris.size}")
+            }
+            return cached
+        }
 
         var textBody = ""
         var imagePartUris = mutableListOf<String>()
         var attachmentLabel = ""
+        var rowCount = 0
 
         val partsUri = Uri.parse("content://mms/$msgId/part")
         try {
@@ -94,10 +104,16 @@ object MmsHelper {
                 val idxText = cursor.getColumnIndex("text")
 
                 while (cursor.moveToNext()) {
-                    val ct = cursor.getString(idxCt) ?: continue
+                    rowCount++
+                    val rawCt = cursor.getString(idxCt) ?: continue
+                    val ct = rawCt.substringBefore(';').trim().lowercase()
 
-                    if (textBody.isBlank() && ct == "text/plain") {
-                        textBody = cursor.getString(idxText) ?: ""
+                    if (ct == "text/plain") {
+                        val partText = cursor.getString(idxText).orEmpty()
+                        if (partText.isNotBlank()) {
+                            if (textBody.isNotBlank()) textBody += "\n"
+                            textBody += partText
+                        }
                     }
 
                     if (ct.isImageMimeType()) {
@@ -119,7 +135,17 @@ object MmsHelper {
                     }
                 }
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            Log.w(TAG, "getCachedParts($msgId) QUERY FAILED", e)
+        }
+
+        if (BuildConfig.DEBUG) {
+            Log.d(
+                TAG,
+                "getCachedParts($msgId) rows=$rowCount bodyLen=${textBody.length} " +
+                    "imgs=${imagePartUris.size} label=$attachmentLabel"
+            )
+        }
 
         return MmsPartCache.CachedParts(
             textBody = textBody,

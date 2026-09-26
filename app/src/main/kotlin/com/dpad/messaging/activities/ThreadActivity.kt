@@ -119,6 +119,7 @@ class ThreadActivity : BaseActivity() {
     private var scrollToBottomAfterSend = false
     private var loadMessagesJob: Job? = null
     private var displayMessagesJob: Job? = null
+    private var messageLoadGeneration = 0L
 
     // ─── Lifecycle ─────────────────────────────────────────────────────────
 
@@ -1310,11 +1311,13 @@ class ThreadActivity : BaseActivity() {
     private fun loadMessages() {
         if (BuildConfig.DEBUG) Log.d("DPAD_MSG", "ThreadActivity.loadMessages() called for threadId=$threadId")
 
+        val generation = ++messageLoadGeneration
+
         // Show cached data immediately for instant warm loads
         val cached = MessageCache.get(threadId)
         if (cached != null) {
             if (BuildConfig.DEBUG) Log.d("DPAD_MSG", "ThreadActivity.loadMessages() cache hit: ${cached.size} messages")
-            displayMessages(cached, fromCache = true)
+            displayMessages(cached, fromCache = true, generation = generation)
         }
 
         // Always refresh from the real source of truth (Telephony ContentProvider)
@@ -1323,18 +1326,20 @@ class ThreadActivity : BaseActivity() {
             val messages = withContext(Dispatchers.IO) {
                 getMessagesForThread(threadId, App.get().contactHelper)
             }
+            if (generation != messageLoadGeneration) return@launch
             if (BuildConfig.DEBUG) Log.d("DPAD_MSG", "ThreadActivity.loadMessages() got ${messages.size} messages for threadId=$threadId")
             MessageCache.put(threadId, messages)
-            displayMessages(messages, fromCache = false)
+            displayMessages(messages, fromCache = false, generation = generation)
         }
     }
 
-    private fun displayMessages(messages: List<Message>, fromCache: Boolean) {
+    private fun displayMessages(messages: List<Message>, fromCache: Boolean, generation: Long = messageLoadGeneration) {
         displayMessagesJob?.cancel()
         displayMessagesJob = lifecycleScope.launch {
             val items = withContext(Dispatchers.Default) {
                 ThreadItem.fromMessages(messages)
             }
+            if (generation != messageLoadGeneration) return@launch
             threadAdapter.submitList(items) {
                 // Scroll to bottom on initial load so the latest message is visible.
                 // After sending, the compose field keeps focus and the just-sent
