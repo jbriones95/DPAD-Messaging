@@ -132,6 +132,11 @@
     <string name="ui_scale_normal">Normal</string>
     <string name="ui_scale_large">Large</string>
     <string name="ui_scale_xlarge">Extra Large</string>
+    <string name="attachment_preview_size">Image Preview Size</string>
+    <string name="attachment_preview_size_summary">Choose the size of images shown in messages</string>
+    <string name="attachment_preview_small">Small</string>
+    <string name="attachment_preview_normal">Normal</string>
+    <string name="attachment_preview_large">Large</string>
     <string name="attach_image_audio">Image / Audio</string>
     <string name="attach_voice_message">Voice message</string>
     <string name="attach_contact">Contact</string>
@@ -155,6 +160,8 @@
     <string name="character_counter_summary">Show SMS length and segment count</string>
     <string name="send_group_message_mms">Group Text via MMS</string>
     <string name="send_group_message_mms_summary">Keep text-only group replies in one thread. Turn off to send individual SMS instead.</string>
+    <string name="auto_download_mms">Automatically Download MMS</string>
+    <string name="auto_download_mms_summary">Download incoming pictures and files automatically</string>
     <string name="lock_screen_privacy">Lock Screen Privacy</string>
     <string name="lock_screen_privacy_summary">Control what appears in lock screen notifications</string>
     <string name="show_sender_and_message">Show sender and message</string>
@@ -172,6 +179,9 @@
     <string name="about">About</string>
     <string name="version">Version</string>
     <string name="new_message">New message</string>
+    <string name="mms_download_pending_title">MMS waiting to download</string>
+    <string name="mms_download_pending_text">Tap Download to get this message.</string>
+    <string name="download_mms">Download</string>
 
     <!-- ─── Blocked Keywords ─── -->
     <string name="add_keyword">Add Keyword</string>

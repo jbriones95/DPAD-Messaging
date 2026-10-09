@@ -314,6 +314,10 @@
             </intent-filter>
         </receiver>
 
+        <receiver
+            android:name=".receivers.PendingMmsDownloadReceiver"
+            android:exported="false" />
+
         <!-- Notification action receivers -->
         <receiver
             android:name=".receivers.DirectReplyReceiver"

@@ -35,6 +35,8 @@ class Prefs private constructor(context: Context) {
         private const val KEY_DATE_FORMAT         = "date_format"
         private const val KEY_TIME_FORMAT         = "time_format"
         private const val KEY_UI_SCALE            = "ui_scale"
+        private const val KEY_ATTACHMENT_PREVIEW_SIZE = "attachment_preview_size"
+        private const val KEY_AUTO_DOWNLOAD_MMS   = "auto_download_mms"
         private const val KEY_DEFAULT_SMS_DISMISSED = "default_sms_dismissed"
         private const val KEY_EXPERIMENTAL_UPDATES = "experimental_updates"
         private const val KEY_CONTACT_COLOR_PREFIX = "contact_color_"
@@ -57,6 +59,9 @@ class Prefs private constructor(context: Context) {
         const val UI_SCALE_NORMAL     = "normal"    // 1.0x  (default)
         const val UI_SCALE_LARGE      = "large"     // 1.25x
         const val UI_SCALE_XLARGE     = "xlarge"    // 1.5x
+        const val ATTACHMENT_PREVIEW_SMALL  = "small"
+        const val ATTACHMENT_PREVIEW_NORMAL = "normal"
+        const val ATTACHMENT_PREVIEW_LARGE  = "large"
 
         private const val TAG = "Prefs"
 
@@ -98,6 +103,11 @@ class Prefs private constructor(context: Context) {
         get() = prefs.getBoolean(KEY_SEND_GROUP_MESSAGE_MMS, true)
         set(v) = prefs.edit().putBoolean(KEY_SEND_GROUP_MESSAGE_MMS, v).apply()
 
+    /** Automatically download incoming MMS content. Default: true. */
+    var autoDownloadMms: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_DOWNLOAD_MMS, true)
+        set(v) = prefs.edit().putBoolean(KEY_AUTO_DOWNLOAD_MMS, v).apply()
+
     /**
      * Phase 2 rollout flag for library-backed SMS sending.
      * true = route SMS_SINGLE through mmslib transaction path.
@@ -121,6 +131,12 @@ class Prefs private constructor(context: Context) {
     var silentUnknownSenders: Boolean
         get() = prefs.getBoolean(KEY_SILENT_UNKNOWN_SENDERS, false)
         set(v) = prefs.edit().putBoolean(KEY_SILENT_UNKNOWN_SENDERS, v).apply()
+
+    /** Size of inline image previews in message bubbles. */
+    var attachmentPreviewSize: String
+        get() = prefs.getString(KEY_ATTACHMENT_PREVIEW_SIZE, ATTACHMENT_PREVIEW_NORMAL)
+            ?: ATTACHMENT_PREVIEW_NORMAL
+        set(v) = prefs.edit().putString(KEY_ATTACHMENT_PREVIEW_SIZE, v).apply()
 
     /** Move deleted messages to the recycle bin instead of hard-deleting. Default: false. */
     var recycleBinEnabled: Boolean

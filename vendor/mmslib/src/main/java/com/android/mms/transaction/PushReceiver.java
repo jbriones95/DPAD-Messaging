@@ -174,9 +174,8 @@ public class PushReceiver extends BroadcastReceiver {
                         }
 
                         if (!isDuplicateNotification(mContext, nInd)) {
-                            // Save the pdu. If we can start downloading the real pdu immediately,
-                            // don't allow persist() to create a thread for the notificationInd
-                            // because it causes UI jank.
+                             // Persist the notification row when the app policy defers the
+                             // download so it can be retrieved later by the user.
                             boolean group;
 
                             try {
@@ -185,11 +184,12 @@ public class PushReceiver extends BroadcastReceiver {
                                 group = PreferenceManager.getDefaultSharedPreferences(mContext).getBoolean("group_message", true);
                             }
 
-                            Uri uri = p.persist(pdu, Inbox.CONTENT_URI,
-                                    !NotificationTransaction.allowAutoDownload(mContext),
-                                    group,
-                                    null,
-                                    subId);
+                             boolean allowAutoDownload = MmsRequestOverrides.shouldAutoDownload(mContext, subId);
+                             Uri uri = p.persist(pdu, Inbox.CONTENT_URI,
+                                     !allowAutoDownload,
+                                     group,
+                                     null,
+                                     subId);
 
                             String location;
                             try {
@@ -229,9 +229,11 @@ public class PushReceiver extends BroadcastReceiver {
                                         .getBoolean("system_mms_sending", useSystem);
                             }
 
-                            if (useSystem) {
-                                DownloadManager.getInstance().downloadMultimediaMessage(mContext, location, transactionId, uri, true, subId);
-                            } else {
+                             if (!allowAutoDownload) {
+                                 MmsRequestOverrides.onDownloadDeferred(mContext, uri, subId);
+                             } else if (useSystem) {
+                                 DownloadManager.getInstance().downloadMultimediaMessage(mContext, location, transactionId, uri, true, subId);
+                             } else {
                                 Log.v(TAG, "receiving with lollipop method");
                                 MmsRequestManager requestManager = new MmsRequestManager(mContext);
                                 DownloadRequest request = new DownloadRequest(requestManager,

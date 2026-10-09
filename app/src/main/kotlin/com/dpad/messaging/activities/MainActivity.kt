@@ -1,6 +1,7 @@
 package com.dpad.messaging.activities
 
 import android.Manifest
+import android.database.ContentObserver
 import android.app.role.RoleManager
 import android.content.res.ColorStateList
 import android.content.Intent
@@ -8,6 +9,8 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Telephony
 import android.view.KeyEvent
 import android.view.View
@@ -69,6 +72,18 @@ class MainActivity : BaseActivity() {
     private var hasLoadedConversationsOnce = false
     private var conversationLoadError = false
     private val selectedThreadIds = linkedSetOf<Long>()
+    private var isActivityResumed = false
+    private var conversationDataDirty = true
+    private var conversationChangeGeneration = 0L
+    private var providerObserverRegistered = false
+
+    private val providerObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean, uri: Uri?) {
+            conversationDataDirty = true
+            conversationChangeGeneration++
+            if (isActivityResumed) scheduleProviderRefresh()
+        }
+    }
 
     private val requiredPermissions = buildList {
         add(Manifest.permission.READ_SMS)
@@ -109,6 +124,7 @@ class MainActivity : BaseActivity() {
         setupConversationList()
         setupToolbar()
         setupSearch()
+        registerProviderObserver()
         checkPermissions()
         if (handleLauncherThreadIntent(intent)) return
         handleExternalComposeIntent(intent)
@@ -123,25 +139,65 @@ class MainActivity : BaseActivity() {
 
     override fun onResume() {
         super.onResume()
+        isActivityResumed = true
         EventBus.getDefault().register(this)
         applyAccent()
-        // DavX5 may complete a contacts sync while the app is not visible.
-        // Do not keep stale successful or failed name lookups across resumes.
-        App.get().contactHelper.clearCache()
+        // Reload only when the telephony/contact providers changed while away.
+        if (conversationDataDirty || !hasLoadedConversationsOnce) {
+            App.get().contactHelper.clearCache()
+        }
         refreshConversationList()
         checkDefaultSmsApp()
     }
 
     private fun refreshConversationList() {
-        loadConversations()
+        if (conversationDataDirty || !hasLoadedConversationsOnce || ConversationCache.get() == null) {
+            loadConversations()
+        } else {
+            ConversationCache.get()?.let { displayConversations(it) }
+        }
     }
 
     override fun onPause() {
+        isActivityResumed = false
         pendingFocusThreadId = currentFocusedThreadId() ?: pendingFocusThreadId
         loadConversationsJob?.cancel()
         refreshDebounceJob?.cancel()
         EventBus.getDefault().unregister(this)
         super.onPause()
+    }
+
+    override fun onDestroy() {
+        if (providerObserverRegistered) {
+            contentResolver.unregisterContentObserver(providerObserver)
+        }
+        super.onDestroy()
+    }
+
+    private fun registerProviderObserver() {
+        if (providerObserverRegistered) return
+        runCatching {
+            contentResolver.registerContentObserver(Telephony.Sms.CONTENT_URI, true, providerObserver)
+            contentResolver.registerContentObserver(Uri.parse("content://mms"), true, providerObserver)
+            contentResolver.registerContentObserver(
+                android.provider.ContactsContract.Contacts.CONTENT_URI,
+                true,
+                providerObserver
+            )
+            providerObserverRegistered = true
+        }.onFailure {
+            // Permissions may not have been granted on the first launch. Retry
+            // from onResume or after the permission callback.
+            runCatching { contentResolver.unregisterContentObserver(providerObserver) }
+        }
+    }
+
+    private fun scheduleProviderRefresh() {
+        refreshDebounceJob?.cancel()
+        refreshDebounceJob = lifecycleScope.launch {
+            delay(REFRESH_DEBOUNCE_MS)
+            loadConversations(forceRefresh = true)
+        }
     }
 
     // ─── Setup ─────────────────────────────────────────────────────────────
@@ -276,6 +332,7 @@ class MainActivity : BaseActivity() {
 
         loadConversationsJob?.cancel()
         loadConversationsJob = lifecycleScope.launch {
+            val generationAtStart = conversationChangeGeneration
             try {
                 val pinnedIds = Prefs.get().getPinnedThreadIds()
                 val mutedIds = Prefs.get().getMutedThreadIds()
@@ -291,6 +348,9 @@ class MainActivity : BaseActivity() {
                 if (!isActive) return@launch
                 hasLoadedConversationsOnce = true
                 ConversationCache.put(conversations)
+                if (generationAtStart == conversationChangeGeneration) {
+                    conversationDataDirty = false
+                }
                 displayConversations(conversations)
             } catch (e: Exception) {
                 if (BuildConfig.DEBUG) android.util.Log.w("DPAD_MSG", "loadConversations failed", e)
@@ -854,7 +914,10 @@ class MainActivity : BaseActivity() {
         requestCode: Int, permissions: Array<out String>, grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQUEST_PERMISSIONS) loadConversations()
+        if (requestCode == REQUEST_PERMISSIONS) {
+            registerProviderObserver()
+            loadConversations()
+        }
     }
 
     private fun checkDefaultSmsApp() {

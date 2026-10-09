@@ -28,6 +28,7 @@ object NotificationHelper {
     const val REPLY_KEY = "reply_key"
     const val EXTRA_PHONE_NUMBER = "extra_phone_number"
     private const val FAILURE_NOTIFICATION_OFFSET = 1_000_000_000
+    private const val PENDING_MMS_NOTIFICATION_OFFSET = 2_100_000_000
 
     fun threadNotificationId(threadId: Long): Int {
         val mixed = threadId xor (threadId ushr 32)
@@ -108,6 +109,8 @@ object NotificationHelper {
         // ── Build & post ──────────────────────────────────────────────────────
         val accentColor = ThemeManager.accentColor(context)
         val sender = Person.Builder().setName(senderName).build()
+        val silentUnknownSender = Prefs.get().silentUnknownSenders &&
+            (senderName.isBlank() || senderName.trim() == phoneNumber.trim())
         val messageStyle = NotificationCompat.MessagingStyle(sender)
             .addMessage(body, System.currentTimeMillis(), sender)
         val builder = NotificationCompat.Builder(context, App.CHANNEL_MESSAGES)
@@ -120,13 +123,18 @@ object NotificationHelper {
             .setContentIntent(openPI)
             .setAutoCancel(true)
             .setCategory(Notification.CATEGORY_MESSAGE)
-            .setSilent(
-                Prefs.get().silentUnknownSenders &&
-                    (senderName.isBlank() || senderName.trim() == phoneNumber.trim())
-            )
+            .setSilent(silentUnknownSender)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .addAction(replyAction)
             .addAction(markReadAction)
+
+        // Android O moved alert behavior to notification channels. Older devices
+        // need the defaults explicitly set on each notification.
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O &&
+            !silentUnknownSender
+        ) {
+            builder.setDefaults(Notification.DEFAULT_SOUND or Notification.DEFAULT_VIBRATE)
+        }
 
         // Apply lock screen privacy setting.
         when (Prefs.get().lockScreenPrivacy) {
@@ -166,6 +174,43 @@ object NotificationHelper {
 
     fun cancelNotification(context: Context, notifId: Int) {
         context.getSystemService(NotificationManager::class.java).cancel(notifId)
+    }
+
+    fun pendingMmsNotificationId(messageId: Long): Int {
+        val mixed = messageId xor (messageId ushr 32)
+        return PENDING_MMS_NOTIFICATION_OFFSET + (mixed.toInt() and 0x00FFFFFF)
+    }
+
+    fun showPendingMmsNotification(context: Context, messageId: Long, subscriptionId: Int) {
+        if (messageId <= 0L) return
+        val notificationId = pendingMmsNotificationId(messageId)
+        val downloadIntent = MmsDownloadPolicy.pendingDownloadIntent(context, messageId, subscriptionId)
+        val downloadPendingIntent = PendingIntent.getBroadcast(
+            context,
+            notificationId,
+            downloadIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val builder = NotificationCompat.Builder(context, App.CHANNEL_MESSAGES)
+            .setSmallIcon(R.drawable.ic_new_message)
+            .setColor(ThemeManager.accentColor(context))
+            .setContentTitle(context.getString(R.string.mms_download_pending_title))
+            .setContentText(context.getString(R.string.mms_download_pending_text))
+            .setContentIntent(downloadPendingIntent)
+            .setAutoCancel(false)
+            .setCategory(Notification.CATEGORY_MESSAGE)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .addAction(0, context.getString(R.string.download_mms), downloadPendingIntent)
+
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) {
+            builder.setDefaults(Notification.DEFAULT_SOUND or Notification.DEFAULT_VIBRATE)
+        }
+        context.getSystemService(NotificationManager::class.java)
+            .notify(notificationId, builder.build())
+    }
+
+    fun cancelPendingMmsNotification(context: Context, messageId: Long) {
+        if (messageId > 0L) cancelNotification(context, pendingMmsNotificationId(messageId))
     }
 
     fun cancelFailureNotification(context: Context, messageId: Long) {

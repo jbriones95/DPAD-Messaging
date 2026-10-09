@@ -33,6 +33,13 @@ object MmsHttpOverrides {
             }
 
             override fun appendTransactionId(context: Context, subId: Int): Boolean = false
+
+            override fun shouldAutoDownload(context: Context, subId: Int): Boolean =
+                MmsDownloadPolicy.shouldAutoDownload()
+
+            override fun onDownloadDeferred(context: Context, messageUri: android.net.Uri, subId: Int) {
+                MmsDownloadPolicy.defer(context, messageUri, subId)
+            }
         })
     }
 

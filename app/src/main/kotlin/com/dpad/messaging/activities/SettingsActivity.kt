@@ -24,6 +24,7 @@ import com.dpad.messaging.R
 import com.dpad.messaging.databinding.ActivitySettingsBinding
 import com.dpad.messaging.helpers.BackupManager
 import com.dpad.messaging.helpers.BackupWorker
+import com.dpad.messaging.helpers.MmsDownloadPolicy
 import com.dpad.messaging.helpers.Prefs
 import com.dpad.messaging.helpers.ThemeManager
 import com.dpad.messaging.helpers.UpdateManager
@@ -237,6 +238,23 @@ class SettingsActivity : BaseActivity() {
                 recreate()
             }
         )
+        valueRow(
+            container    = c,
+            label        = getString(R.string.attachment_preview_size),
+            summary      = getString(R.string.attachment_preview_size_summary),
+            getValue     = { prefs.attachmentPreviewSize },
+            optionValues = listOf(
+                Prefs.ATTACHMENT_PREVIEW_SMALL,
+                Prefs.ATTACHMENT_PREVIEW_NORMAL,
+                Prefs.ATTACHMENT_PREVIEW_LARGE
+            ),
+            optionLabels = listOf(
+                getString(R.string.attachment_preview_small),
+                getString(R.string.attachment_preview_normal),
+                getString(R.string.attachment_preview_large)
+            ),
+            setValue     = { prefs.attachmentPreviewSize = it }
+        )
 
         // ── Messaging ────────────────────────────────────────────────────────
         sectionHeader(c, getString(R.string.messaging))
@@ -271,6 +289,20 @@ class SettingsActivity : BaseActivity() {
             summary   = getString(R.string.send_group_message_mms_summary),
             getValue  = { prefs.sendGroupMessageMms },
             setValue  = { prefs.sendGroupMessageMms = it }
+        )
+        toggleRow(
+            container = c,
+            label     = getString(R.string.auto_download_mms),
+            summary   = getString(R.string.auto_download_mms_summary),
+            getValue  = { prefs.autoDownloadMms },
+            setValue  = { enabled ->
+                prefs.autoDownloadMms = enabled
+                if (enabled) {
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        MmsDownloadPolicy.downloadPending(this@SettingsActivity)
+                    }
+                }
+            }
         )
 
         // ── Privacy ──────────────────────────────────────────────────────────

@@ -386,11 +386,16 @@ class ThreadAdapter(
 
         override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): AttachmentViewHolder {
             val density = parent.context.resources.displayMetrics.density
+            val previewDp = when (Prefs.get().attachmentPreviewSize) {
+                Prefs.ATTACHMENT_PREVIEW_SMALL -> 80f
+                Prefs.ATTACHMENT_PREVIEW_LARGE -> 152f
+                else -> 112f
+            }
             val root = android.widget.LinearLayout(parent.context).apply {
                 orientation = android.widget.LinearLayout.VERTICAL
                 gravity = android.view.Gravity.CENTER
                 layoutParams = android.view.ViewGroup.LayoutParams(
-                    (density * 72f).toInt(), (density * 58f).toInt()
+                    (density * previewDp).toInt(), (density * previewDp).toInt()
                 )
                 setPadding(2, 2, 2, 2)
                 isFocusable = true
@@ -400,7 +405,8 @@ class ThreadAdapter(
             }
             val iv = android.widget.ImageView(parent.context).apply {
                 layoutParams = android.widget.LinearLayout.LayoutParams(
-                    (density * 42f).toInt(), (density * 38f).toInt()
+                    (density * (previewDp - 8f)).toInt(),
+                    (density * (previewDp - 20f)).toInt()
                 )
                 scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
             }
@@ -430,10 +436,10 @@ class ThreadAdapter(
             }
             holder.icon.apply {
                 scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
-                Glide.with(context).clear(this)
-                if (attachment.mimeType.startsWith("image/") || attachment.mimeType.isBlank()) {
-                    Glide.with(context).load(attachment.contentUri)
-                        .override(84, 76)
+                    Glide.with(context).clear(this)
+                    if (attachment.mimeType.startsWith("image/") || attachment.mimeType.isBlank()) {
+                        Glide.with(context).load(attachment.contentUri)
+                        .override(holder.icon.layoutParams.width, holder.icon.layoutParams.height)
                         .into(this)
                     holder.label.visibility = View.GONE
                 } else {

@@ -15,6 +15,7 @@ import com.dpad.messaging.events.RefreshConversations
 import com.dpad.messaging.events.RefreshMessages
 import com.dpad.messaging.helpers.MessageCache
 import com.dpad.messaging.helpers.MmsHelper
+import com.dpad.messaging.helpers.MmsDownloadPolicy
 import com.dpad.messaging.helpers.MmsPartCache
 import com.dpad.messaging.helpers.NotificationHelper
 import com.dpad.messaging.helpers.PhoneNumberMatcher
@@ -59,6 +60,7 @@ class MmsReceiveWorker(
         // notification-ind placeholder. Remove that stale notification when
         // the corresponding final MMS becomes available.
         NotificationHelper.cancelNotification(applicationContext, Long.MAX_VALUE.toInt())
+        MmsDownloadPolicy.cancelPendingNotification(applicationContext, msgId)
 
         val from = getFromAddress(msgId)
         val filterResult = SmsWhitelistManager.check(applicationContext, from)
