@@ -1,0 +1,2 @@
+- Verizon voice notes now use a compatible device profile so incoming audio can play instead of arriving as unsupported QCELP.
+- MMS requests keep the normal Android delivery path while applying the compatible profile only for Verizon SIMs.

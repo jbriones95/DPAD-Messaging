@@ -18,6 +18,7 @@ import com.android.mms.MmsConfig;
 import com.klinker.android.logger.Log;
 import com.klinker.android.send_message.BroadcastUtils;
 import com.klinker.android.send_message.MmsReceivedReceiver;
+import com.klinker.android.send_message.MmsRequestOverrides;
 import com.klinker.android.send_message.SmsManagerFactory;
 
 import java.io.File;
@@ -92,6 +93,7 @@ public class DownloadManager {
             // this doesn't seem to always work...
             // configOverrides = smsManager.getCarrierConfigValues();
         }
+        MmsRequestOverrides.apply(context, subscriptionId, configOverrides);
 
         grantUriPermission(context, contentUri);
         smsManager.downloadMultimediaMessage(context, location, contentUri, configOverrides, pendingIntent);

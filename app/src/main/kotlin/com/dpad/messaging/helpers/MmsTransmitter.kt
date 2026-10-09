@@ -165,6 +165,7 @@ object MmsTransmitter {
         val configOverrides = Bundle().apply {
             putBoolean(SmsManager.MMS_CONFIG_GROUP_MMS_ENABLED, groupMms)
         }
+        MmsHttpOverrides.applyForMms(context, resolvedSubId, configOverrides)
 
         SmsManagerFactory.createSmsManager(resolvedSubId).sendMultimediaMessage(
             context,

@@ -54,8 +54,10 @@ import com.google.android.mms.pdu_alt.PduParser;
 import com.google.android.mms.pdu_alt.PduPersister;
 import com.google.android.mms.pdu_alt.ReadOrigInd;
 import com.klinker.android.logger.Log;
+import com.klinker.android.send_message.MmsRequestOverrides;
 import com.klinker.android.send_message.Settings;
 import com.klinker.android.send_message.SmsManagerFactory;
+import com.klinker.android.send_message.Transaction;
 import com.klinker.android.send_message.Utils;
 
 import java.util.HashSet;
@@ -150,6 +152,8 @@ public class PushReceiver extends BroadcastReceiver {
                         boolean appendTransactionId = false;
                         Bundle configOverrides = SmsManagerFactory.createSmsManager(subId).getCarrierConfigValues();
                         appendTransactionId = configOverrides.getBoolean(SmsManager.MMS_CONFIG_APPEND_TRANSACTION_ID);
+                        appendTransactionId = appendTransactionId
+                                || MmsRequestOverrides.appendTransactionId(mContext, subId);
 
                         if (appendTransactionId) {
                             Log.v(TAG, "appending the transaction ID, based on the SMS manager overrides");

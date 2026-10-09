@@ -7,6 +7,7 @@ import android.os.Build
 import com.dpad.messaging.databases.MessagesDatabase
 import com.dpad.messaging.helpers.AppCoroutineScopes
 import com.dpad.messaging.helpers.ContactHelper
+import com.dpad.messaging.helpers.MmsHttpOverrides
 import com.dpad.messaging.helpers.MmsSender
 import com.dpad.messaging.helpers.Prefs
 import com.dpad.messaging.helpers.ScheduledMessageIntegrityChecker
@@ -30,6 +31,7 @@ class App : Application() {
         contactHelper = ContactHelper(this)
         Prefs.init(this)
         MmsSender.initLibraryReceive()
+        MmsHttpOverrides.install()
         ThemeManager.applyThemeMode(Prefs.get().appThemeMode)
         refreshNotificationChannels()
         AppCoroutineScopes.io.launch {
