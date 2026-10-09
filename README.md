@@ -101,10 +101,6 @@ Handles SMS message sending via SmsManager, including long-message (multipart) h
 ### BackupManager
 Encrypted, device-bound backup and restore of app-local data.
 
-## Contributors
-
-- [@anonymousfliphones](https://github.com/anonymousfliphones) — Verizon MMS compatibility research and fix proposal.
-
 ## Support
 
 If you find this app useful, consider supporting its development:
