@@ -18,6 +18,7 @@ class ContactHelper(private val context: Context) {
     )
 
     private val cache = LruCache<String, ContactInfo>(256)
+    private val misses = LruCache<String, Boolean>(256)
 
     /** Returns the best display name for a phone number, or the number itself if no contact found. */
     fun getDisplayName(phoneNumber: String): String {
@@ -31,6 +32,7 @@ class ContactHelper(private val context: Context) {
         val cacheKey = phoneNumber.filter { it.isDigit() }.ifBlank { phoneNumber }
         val cached = cache.get(cacheKey)
         if (cached != null) return cached
+        if (misses.get(cacheKey) == true) return null
         val projection = arrayOf(
             ContactsContract.PhoneLookup.DISPLAY_NAME,
             ContactsContract.PhoneLookup.PHOTO_THUMBNAIL_URI
@@ -43,7 +45,7 @@ class ContactHelper(private val context: Context) {
         val result = lookupNumbers.firstNotNullOfOrNull { number ->
             queryPhoneLookup(number, projection) ?: queryPhoneFilter(number, projection)
         }
-        if (result != null) cache.put(cacheKey, result)
+        if (result != null) cache.put(cacheKey, result) else misses.put(cacheKey, true)
         return result
     }
 
@@ -75,6 +77,7 @@ class ContactHelper(private val context: Context) {
 
     fun clearCache() {
         cache.evictAll()
+        misses.evictAll()
     }
 
     data class ContactSuggestion(

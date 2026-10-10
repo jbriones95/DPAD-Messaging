@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.ContactsContract
 import android.provider.Telephony
 import android.view.KeyEvent
 import android.view.View
@@ -81,6 +82,9 @@ class MainActivity : BaseActivity() {
         override fun onChange(selfChange: Boolean, uri: Uri?) {
             conversationDataDirty = true
             conversationChangeGeneration++
+            if (uri?.authority == ContactsContract.AUTHORITY) {
+                App.get().contactHelper.clearCache()
+            }
             if (isActivityResumed) scheduleProviderRefresh()
         }
     }
@@ -142,10 +146,6 @@ class MainActivity : BaseActivity() {
         isActivityResumed = true
         EventBus.getDefault().register(this)
         applyAccent()
-        // Reload only when the telephony/contact providers changed while away.
-        if (conversationDataDirty || !hasLoadedConversationsOnce) {
-            App.get().contactHelper.clearCache()
-        }
         refreshConversationList()
         checkDefaultSmsApp()
     }
