@@ -16,7 +16,7 @@ AllowedAPKSigningKeys: c7eeb6b0a8089ead8ff786af45ffc545f4c4f7be38dd62655e42843ee
 Builds:
   - versionName: 0.5.5
     versionCode: 1055000
-    commit: HEAD
+    commit: f3a51f9
     subdir: app
     gradle:
       - yes
