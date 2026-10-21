@@ -168,6 +168,7 @@ class ThreadAdapter(
         private val binding: ItemMessageSentBinding
     ) : RecyclerView.ViewHolder(binding.root) {
         fun bind(message: Message, position: Int) {
+            binding.tvEncrypted.visibility = if (message.isEncrypted) View.VISIBLE else View.GONE
             binding.tvBody.text = message.body
             binding.bubbleContainer.isFocusable = !binding.tvBody.isFocusable
             binding.bubbleContainer.isFocusableInTouchMode = !binding.tvBody.isFocusableInTouchMode
@@ -188,11 +189,12 @@ class ThreadAdapter(
             applyMessageFocus(
                 bubble = binding.bubbleContainer,
                 message = message,
-                textViews = listOf(binding.tvBody, binding.tvTime, binding.tvStatus),
+                textViews = listOf(binding.tvBody, binding.tvTime, binding.tvStatus, binding.tvEncrypted),
                 restingColors = listOf(
                     R.color.bubbleSentText,
                     R.color.messageMetaOnSent,
-                    R.color.statusDelivered
+                    R.color.statusDelivered,
+                    R.color.messageMetaOnSent
                 ),
                 positionProvider = { bindingAdapterPosition }
             )
@@ -207,6 +209,7 @@ class ThreadAdapter(
         private val binding: ItemMessageReceivedBinding
     ) : RecyclerView.ViewHolder(binding.root) {
         fun bind(message: Message, position: Int) {
+            binding.tvEncrypted.visibility = if (message.isEncrypted) View.VISIBLE else View.GONE
             binding.tvBody.text = message.body
             binding.bubbleContainer.isFocusable = !binding.tvBody.isFocusable
             binding.bubbleContainer.isFocusableInTouchMode = !binding.tvBody.isFocusableInTouchMode
@@ -228,7 +231,7 @@ class ThreadAdapter(
             applyMessageFocus(
                 bubble = binding.bubbleContainer,
                 message = message,
-                textViews = listOf(binding.tvBody, binding.tvTime, binding.tvSenderName),
+                textViews = listOf(binding.tvBody, binding.tvTime, binding.tvSenderName, binding.tvEncrypted),
                 restingColors = null,
                 positionProvider = { bindingAdapterPosition }
             )
@@ -263,6 +266,7 @@ class ThreadAdapter(
                 binding.tvBody.setTextColor(context.getColor(R.color.bubbleReceivedText))
                 binding.tvTime.setTextColor(context.getColor(R.color.messageMetaOnReceived))
                 binding.tvSenderName.setTextColor(context.getColor(R.color.colorSecondary))
+                binding.tvEncrypted.setTextColor(context.getColor(R.color.colorSecondary))
                 return
             }
 
@@ -270,6 +274,7 @@ class ThreadAdapter(
             binding.tvBody.setTextColor(ContactColors.textColorOn(color))
             binding.tvTime.setTextColor(ContactColors.metaColorOn(color))
             binding.tvSenderName.setTextColor(color)
+            binding.tvEncrypted.setTextColor(ContactColors.metaColorOn(color))
         }
     }
 

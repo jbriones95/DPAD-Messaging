@@ -22,3 +22,6 @@ Thumbs.db
 
 # Secret local config (never commit/push)
 AGENTS.md
+
+app/src/main/jniLibs/
+vendor/dumber-chat-core/target/

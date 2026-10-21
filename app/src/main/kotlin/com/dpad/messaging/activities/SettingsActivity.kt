@@ -256,6 +256,9 @@ class SettingsActivity : BaseActivity() {
 
         // ── Messaging ────────────────────────────────────────────────────────
         sectionHeader(c, getString(R.string.messaging))
+        navRow(c, "Connect dumber.chat", "Encrypted messaging with confirmed SMS fallback") {
+            startActivity(Intent(this, com.dpad.messaging.dumber.DumberConnectActivity::class.java))
+        }
 
         toggleRow(
             container = c,

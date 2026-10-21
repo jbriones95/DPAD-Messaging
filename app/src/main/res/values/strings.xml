@@ -317,4 +317,23 @@
     <string name="install_update">Install update</string>
     <string name="update_check_failed">Update check failed: %1$s</string>
     <string name="update_installer_unavailable">Android could not open the package installer</string>
+    <string name="dumber_encrypted">encrypted</string>
+    <string name="dumber_privacy_notice">Encrypted messages are sent through nokings.chat. Messages are end-to-end encrypted, but the server may retain encrypted copies. Message history and keys are also kept on this device; clearing app data can remove your keys.</string>
+    <string name="dumber_status_encrypted">End-to-end encrypted</string>
+    <string name="dumber_status_sms">SMS/MMS — not end-to-end encrypted</string>
+    <string name="dumber_status_checking">Checking availability…</string>
+    <string name="dumber_status_unknown">Availability unknown</string>
+    <string name="dumber_recheck">Check availability again</string>
+    <string name="dumber_recheck_detail">This uses one of your 50 daily phone lookups. Known recipients can already receive encrypted messages without another lookup.</string>
+    <string name="dumber_send_pending">Message waiting for your decision</string>
+    <string name="dumber_send_pending_detail">Open the conversation to retry encrypted delivery or choose unencrypted SMS.</string>
+    <string name="dumber_pending_count">Unsent (%1$d)</string>
+    <string name="dumber_retry_encrypted">Retry encrypted</string>
+    <string name="dumber_send_sms">Send as SMS</string>
+    <string name="dumber_sms_confirmation">Send this message as an unencrypted SMS? Carrier charges may apply.</string>
+    <string name="dumber_sms_uncertain">Encrypted delivery could not be confirmed. The recipient may already have received it. Sending an unencrypted SMS may deliver a duplicate. Carrier charges may apply.</string>
+    <string name="dumber_status_sim_unconnected">SMS · SIM not connected</string>
+    <string name="dumber_status_link_sim">Link dumber.chat account to SIM</string>
+    <string name="dumber_recipient_unavailable">Recipient no longer available on dumber.chat</string>
+    <string name="dumber_recipient_unavailable_sms">Send this message as regular SMS?</string>
 </resources>

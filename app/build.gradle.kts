@@ -79,6 +79,7 @@ android {
             buildConfigField("String", "UPDATE_CHANNEL", "\"experimental\"")
         }
         debug {
+            applicationIdSuffix = providers.gradleProperty("debugApplicationIdSuffix").orNull
             isDebuggable = true
         }
     }
@@ -167,3 +168,20 @@ dependencies {
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
     androidTestImplementation("androidx.room:room-testing:2.6.1")
 }
+
+// A clean checkout must include the encryption engine, not silently ship SMS-only.
+val dumberRustTarget = providers.gradleProperty("dumberRustTarget").orElse("aarch64-linux-android")
+val dumberAbi = dumberRustTarget.map { target ->
+    mapOf("aarch64-linux-android" to "arm64-v8a", "armv7-linux-androideabi" to "armeabi-v7a", "x86_64-linux-android" to "x86_64")[target]
+        ?: error("Unsupported dumberRustTarget: $target")
+}
+val buildDumberCore by tasks.registering(Exec::class) {
+    workingDir(rootDir)
+    commandLine("bash", "scripts/build-dumber-core.sh")
+    environment("DUMBER_RUST_TARGET", dumberRustTarget.get())
+    inputs.files(fileTree(rootProject.file("vendor/dumber-chat-core")) { exclude("target/**", ".git/**") })
+    inputs.file(rootProject.file("scripts/build-dumber-core.sh"))
+    inputs.property("target", dumberRustTarget)
+    outputs.file(dumberAbi.map { file("src/main/jniLibs/$it/libdumber_chat_core.so") })
+}
+tasks.named("preBuild") { dependsOn(buildDumberCore) }

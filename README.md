@@ -128,3 +128,10 @@ If you find this app useful, consider supporting its development:
 ## License
 
 MIT
+
+## Optional dumber.chat messaging
+
+Settings → Messaging → **Connect dumber.chat** enables encrypted one-to-one text
+messages with registered contacts, with explicit confirmation before carrier SMS fallback. Native
+build requirements, behavior and tests are described in
+[docs/dumber-chat.md](docs/dumber-chat.md).

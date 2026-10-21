@@ -321,13 +321,34 @@ object LibraryUnifiedMessageSender : UnifiedMessageSender {
     }
 }
 
+/** Carrier fallback remains the existing sender, including MDM checks. */
+object DumberUnifiedMessageSender : UnifiedMessageSender {
+    private val carrier: UnifiedMessageSender
+        get() = if (Prefs.get().useLibrarySmsSending) LibraryUnifiedMessageSender else LegacyUnifiedMessageSender
+    override suspend fun sendSms(
+        context: Context,
+        phoneNumber: String,
+        body: String,
+        threadId: Long,
+        subscriptionId: Int,
+        scheduledMessageId: Long?
+    ): Boolean {
+        if (OutgoingFilter.checkAndRecord(context, listOf(phoneNumber), scheduledMessageId).isNotEmpty()) return false
+        val encryptedHandled = com.dpad.messaging.dumber.DumberDelivery.send(
+            context, phoneNumber, body, threadId, subscriptionId, scheduledMessageId
+        )
+        return encryptedHandled || carrier.sendSms(
+            context, phoneNumber, body, threadId, subscriptionId, scheduledMessageId
+        )
+    }
+    override suspend fun sendMms(context: Context, recipients: List<String>, body: String, attachmentUri: Uri?, attachmentUris: List<Uri>, threadId: Long, subscriptionId: Int, scheduledMessageId: Long?): Boolean =
+        carrier.sendMms(context, recipients, body, attachmentUri, attachmentUris, threadId, subscriptionId, scheduledMessageId)
+    override suspend fun sendGroupSmsFanout(context: Context, recipients: List<String>, body: String, fallbackThreadId: Long, subscriptionId: Int) = carrier.sendGroupSmsFanout(context,recipients,body,fallbackThreadId,subscriptionId)
+}
+
 object MessageSenders {
     val unified: UnifiedMessageSender
-        get() = if (Prefs.get().useLibrarySmsSending) {
-            LibraryUnifiedMessageSender
-        } else {
-            LegacyUnifiedMessageSender
-        }
+        get() = DumberUnifiedMessageSender
 
     suspend fun scheduleSms(
         context: Context,

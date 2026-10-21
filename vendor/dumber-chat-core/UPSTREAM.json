@@ -1,0 +1,17 @@
+{
+  "source": "dumber.chat/crates/chat-core",
+  "snapshot_date": "2026-10-21",
+  "description": "Main-phone protocol v2, typed session status and browser pairing; server-enforced revocation.",
+  "sha256": {
+    ".gitignore": "fd1c01eea528a4abb6753202679f78710f19b3824c49b1f04f3bf39c386d9d45",
+    "Cargo.lock": "e91b5d55be56ede3ec33c1392aab9987e01f319698d35c5a9412b110b244fd96",
+    "Cargo.toml": "7cad519b53b971f6ce58b4cab537b493820963b5fc088762dcf68829559762d3",
+    "README.md": "6987a42b701c4282347fd8252aa591e851c248539eee14742b87541900445845",
+    "examples/e2ee.rs": "917a8fc327cc2caeb6522fd483f4519275f619ab574282f3983a70774d0417e0",
+    "examples/smoke.rs": "2b7d35a61d90313b96aa631b130c82c5ffd3966d8e009de855415870fcb690db",
+    "src/api.rs": "632a21b8772e05588ab06ed50f42f51d6740f3533a7085f1cc5a9b94f85b9c8a",
+    "src/catchup.rs": "65ebc0225ab34c0a9db6cca09e6d0961a0718791cae25ee47d07a2ba71903b9f",
+    "src/encryption.rs": "cc9c42f1588a0567ab8772d4cb1e5982ecbce570a04018f75adb88823166c001",
+    "src/lib.rs": "5eb28408599ee4f546b878b1525eca7085083f0c024c7f2505e7acb0307fee8d"
+  }
+}

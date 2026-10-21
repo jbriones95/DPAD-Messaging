@@ -222,6 +222,34 @@
         android:paddingTop="@dimen/padding_tiny"
         android:paddingBottom="@dimen/padding_tiny">
 
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <Button
+                android:id="@+id/dumber_status"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:minHeight="32dp"
+                android:textAllCaps="false"
+                android:textSize="12sp"
+                android:text="@string/dumber_status_unknown"
+                android:visibility="gone"
+                android:nextFocusDown="@id/et_message"
+                android:nextFocusRight="@id/dumber_pending" />
+            <Button
+                android:id="@+id/dumber_pending"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minHeight="32dp"
+                android:textAllCaps="false"
+                android:textSize="12sp"
+                android:visibility="gone"
+                android:nextFocusLeft="@id/dumber_status"
+                android:nextFocusDown="@id/et_message" />
+        </LinearLayout>
+
         <!-- Row 1: compose field + character counter + send -->
         <LinearLayout
             android:layout_width="match_parent"

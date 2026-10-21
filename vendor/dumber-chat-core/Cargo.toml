@@ -1,0 +1,28 @@
+[package]
+name = "dumber-chat-core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.96"
+description = "Phone-number-based Matrix messaging with persistent end-to-end encryption"
+readme = "README.md"
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+anyhow = "1"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+
+matrix-sdk = { version = "=0.19.1", default-features = false, features = ["e2e-encryption", "bundled-sqlite", "rustls-aws-lc-rs"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+sha2 = "0.10"
+matrix-sdk-store-encryption = "=0.19.1"
+reqwest_sdk = { package = "reqwest", version = "0.13", default-features = false, features = ["rustls"] }
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "aws_lc_rs"] }
+webpki-roots = "1"
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"

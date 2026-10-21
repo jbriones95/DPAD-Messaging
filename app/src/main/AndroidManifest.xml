@@ -11,6 +11,7 @@
     <uses-permission android:name="android.permission.RECEIVE_MMS" />
     <uses-permission android:name="android.permission.RECEIVE_WAP_PUSH" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.READ_PHONE_NUMBERS" />
 
     <!-- ─── Contact / People Permissions ─── -->
     <uses-permission android:name="android.permission.READ_CONTACTS" />
@@ -27,6 +28,7 @@
     <!-- ─── Notifications ─── -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <!-- ─── Network (MMS APN) ─── -->
@@ -75,6 +77,8 @@
         tools:targetApi="31">
 
 
+        <activity android:name=".dumber.DumberConnectActivity" android:exported="false" android:label="dumber.chat" />
+        <service android:name=".dumber.DumberSyncService" android:exported="false" android:foregroundServiceType="remoteMessaging" />
         <!-- ─── Activities ─── -->
         <activity
             android:name=".activities.SplashActivity"
