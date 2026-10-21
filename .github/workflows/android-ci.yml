@@ -55,9 +55,7 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: |
-            platform-tools
-            ndk;30.0.16248370
+          packages: 'platform-tools ndk;30.0.16248370'
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
@@ -110,9 +108,7 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: |
-            platform-tools
-            ndk;30.0.16248370
+          packages: 'platform-tools ndk;30.0.16248370'
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
@@ -175,9 +171,7 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: |
-            platform-tools
-            ndk;30.0.16248370
+          packages: 'platform-tools ndk;30.0.16248370'
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
