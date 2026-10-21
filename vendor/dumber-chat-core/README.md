@@ -146,9 +146,10 @@ See `src/lib.rs` for legacy argument names and `src/api.rs` for the typed API. L
 for messages whose keys were not yet available.
 
 The Android JNI entry point is `chat.dumber.app.NativeCore.invoke(String)`.
-Cross-compile for `aarch64-linux-android` using Android NDK Clang (API 26+), setting
-Cargo's target linker and the target-specific CC, CXX and AR variables. Package
-`libdumber_chat_core.so` in the application's ARM64 `jniLibs` directory.
+Cross-compile for Android using NDK Clang with an API 23 target, setting Cargo's
+target linker and the target-specific CC, CXX and AR variables. The app packages
+`libdumber_chat_core.so` for ARM64, 32-bit ARM, x86, and x86_64 in its `jniLibs`
+directories.
 
 ## Encryption and persistence
 

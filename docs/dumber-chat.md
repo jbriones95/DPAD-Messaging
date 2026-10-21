@@ -98,22 +98,13 @@ the NDK's x86-64 host toolchain. GitHub CI installs the pinned Rust toolchain
 and NDK, then runs the native-core tests alongside the Android checks.
 
 ```sh
-rustup target add aarch64-linux-android
+rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
 ./gradlew assembleDebug testDebugUnitTest
 ```
 
-The default native target is ARM64. Other supported targets can be built with:
-
-```sh
-rustup target add armv7-linux-androideabi x86_64-linux-android
-./gradlew assembleDebug -PdumberRustTarget=armv7-linux-androideabi
-./gradlew assembleDebug -PdumberRustTarget=x86_64-linux-android
-```
-
-All previously built libraries under `app/src/main/jniLibs` are packaged, so build
-each required ABI before a multi-ABI release. Unsupported devices retain carrier
-SMS and the connection screen explains that the encryption library is unavailable.
-Native binaries and Cargo build outputs are not checked into Git.
+The build produces ARM64, 32-bit ARM, x86, and x86_64 libraries and packages them
+into the APK. Android 7.1/API 25 devices are supported; the native core is linked
+against Android API 23. Native binaries and Cargo build outputs are not checked into Git.
 
 To install a debug test build alongside a differently signed installed version:
 

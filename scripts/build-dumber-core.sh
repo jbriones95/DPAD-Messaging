@@ -34,27 +34,28 @@ if [[ ! -x "$toolchain/llvm-ar" ]]; then
     echo "Android NDK toolchain not found at $ndk (set ANDROID_NDK_HOME to override)" >&2
     exit 1
 fi
-# Override for other supported Android ABIs; the initial device build is ARM64.
-target="${DUMBER_RUST_TARGET:-aarch64-linux-android}"
-case "$target" in
- aarch64-linux-android) abi=arm64-v8a; compiler=aarch64-linux-android23 ;;
- armv7-linux-androideabi) abi=armeabi-v7a; compiler=armv7a-linux-androideabi23 ;;
- x86_64-linux-android) abi=x86_64; compiler=x86_64-linux-android23 ;;
- *) echo "Unsupported target: $target" >&2; exit 1 ;;
-esac
-suffix="${target//-/_}"
-upper_suffix="$(printf '%s' "$suffix" | tr '[:lower:]' '[:upper:]')"
-export "CARGO_TARGET_${upper_suffix}_LINKER=$toolchain/$compiler-clang"
-export "CC_$suffix=$toolchain/$compiler-clang"
-export "CXX_$suffix=$toolchain/$compiler-clang++"
-export "AR_$suffix=$toolchain/llvm-ar"
 rust_toolchain="${DUMBER_RUST_TOOLCHAIN:-stable}"
 rustc_path="$(rustup which --toolchain "$rust_toolchain" rustc)"
-RUSTC="$rustc_path" rustup run "$rust_toolchain" cargo build \
-    --locked \
-    --release \
-    --manifest-path vendor/dumber-chat-core/Cargo.toml \
-    --target "$target"
-mkdir -p "app/src/main/jniLibs/$abi"
-cp "${CARGO_TARGET_DIR:-vendor/dumber-chat-core/target}/$target/release/libdumber_chat_core.so" "app/src/main/jniLibs/$abi/"
-"$toolchain/llvm-strip" --strip-unneeded "app/src/main/jniLibs/$abi/libdumber_chat_core.so"
+# Build every Android ABI supported by the app's minSdk. The one-target override
+# remains useful for local iteration; CI/release builds include all four.
+targets="${DUMBER_RUST_TARGETS:-${DUMBER_RUST_TARGET:-aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android}}"
+for target in $targets; do
+    case "$target" in
+        aarch64-linux-android) abi=arm64-v8a; compiler=aarch64-linux-android23 ;;
+        armv7-linux-androideabi) abi=armeabi-v7a; compiler=armv7a-linux-androideabi23 ;;
+        i686-linux-android) abi=x86; compiler=i686-linux-android23 ;;
+        x86_64-linux-android) abi=x86_64; compiler=x86_64-linux-android23 ;;
+        *) echo "Unsupported target: $target" >&2; exit 1 ;;
+    esac
+    suffix="${target//-/_}"
+    upper_suffix="$(printf '%s' "$suffix" | tr '[:lower:]' '[:upper:]')"
+    export "CARGO_TARGET_${upper_suffix}_LINKER=$toolchain/$compiler-clang"
+    export "CC_$suffix=$toolchain/$compiler-clang"
+    export "CXX_$suffix=$toolchain/$compiler-clang++"
+    export "AR_$suffix=$toolchain/llvm-ar"
+    RUSTC="$rustc_path" rustup run "$rust_toolchain" cargo build \
+        --locked --release --manifest-path vendor/dumber-chat-core/Cargo.toml --target "$target"
+    mkdir -p "app/src/main/jniLibs/$abi"
+    cp "${CARGO_TARGET_DIR:-vendor/dumber-chat-core/target}/$target/release/libdumber_chat_core.so" "app/src/main/jniLibs/$abi/"
+    "$toolchain/llvm-strip" --strip-unneeded "app/src/main/jniLibs/$abi/libdumber_chat_core.so"
+done
