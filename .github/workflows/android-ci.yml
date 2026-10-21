@@ -41,6 +41,7 @@ jobs:
         with:
           toolchain: 1.96.0
           targets: aarch64-linux-android
+          components: rustfmt, clippy
 
       - name: Test dumber.chat native core
         run: rustup run "$DUMBER_RUST_TOOLCHAIN" cargo test --locked --manifest-path vendor/dumber-chat-core/Cargo.toml
