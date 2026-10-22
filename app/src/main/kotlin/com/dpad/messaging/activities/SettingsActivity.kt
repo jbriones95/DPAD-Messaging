@@ -9,6 +9,7 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -471,11 +472,65 @@ class SettingsActivity : BaseActivity() {
     }
 
     private fun checkForUpdates() {
-        Toast.makeText(this, R.string.checking_for_updates, Toast.LENGTH_SHORT).show()
+        val progressLabel = TextView(this).apply {
+            text = getString(R.string.checking_for_updates)
+        }
+        val progressBar = ProgressBar(
+            this,
+            null,
+            android.R.attr.progressBarStyleHorizontal
+        ).apply {
+            isIndeterminate = true
+            max = 100
+        }
+        val progressView = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val padding = (24 * resources.displayMetrics.density).toInt()
+            setPadding(padding, padding / 2, padding, padding / 2)
+            addView(progressLabel)
+            addView(progressBar, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = padding / 2 })
+        }
+        val progressDialog = AlertDialog.Builder(this)
+            .setTitle(R.string.checking_for_updates)
+            .setView(progressView)
+            .setCancelable(false)
+            .create()
+        progressDialog.show()
+
         lifecycleScope.launch {
-            when (val result = withContext(Dispatchers.IO) {
-                UpdateManager.check(this@SettingsActivity)
-            }) {
+            val result = try {
+                withContext(Dispatchers.IO) {
+                    UpdateManager.check(this@SettingsActivity) { downloaded, total ->
+                        withContext(Dispatchers.Main) {
+                            progressLabel.text = getString(R.string.downloading_update)
+                            if (total > 0) {
+                                progressBar.isIndeterminate = false
+                                progressBar.progress = ((downloaded * 100) / total)
+                                    .coerceIn(0, 100).toInt()
+                                progressLabel.text = getString(
+                                    R.string.update_download_progress,
+                                    formatUpdateSize(downloaded),
+                                    formatUpdateSize(total),
+                                    progressBar.progress
+                                )
+                            } else {
+                                progressBar.isIndeterminate = true
+                                progressLabel.text = getString(
+                                    R.string.update_download_unknown_size,
+                                    formatUpdateSize(downloaded)
+                                )
+                            }
+                        }
+                    }
+                }
+            } finally {
+                progressDialog.dismiss()
+            }
+
+            when (result) {
                 UpdateManager.Result.UpToDate -> {
                     Toast.makeText(this@SettingsActivity, R.string.app_up_to_date, Toast.LENGTH_SHORT).show()
                 }
@@ -498,6 +553,9 @@ class SettingsActivity : BaseActivity() {
             }
         }
     }
+
+    private fun formatUpdateSize(bytes: Long): String =
+        String.format(Locale.getDefault(), "%.1f MB", bytes / (1024.0 * 1024.0))
 
     private fun openNotificationChannelSettings(channelId: String) {
         startActivity(Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).apply {

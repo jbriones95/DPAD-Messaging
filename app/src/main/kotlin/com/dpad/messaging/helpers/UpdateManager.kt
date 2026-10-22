@@ -8,16 +8,15 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
-import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlinx.coroutines.CancellationException
 
 object UpdateManager {
     private const val RELEASES_API_URL =
         "https://api.github.com/repos/jbriones95/DPAD-Messaging/releases/latest"
     private const val EXPERIMENTAL_API_URL =
         "https://api.github.com/repos/jbriones95/DPAD-Messaging/releases/tags/experimental"
-    private const val RELEASE_ASSET_NAME = "app-release.apk"
     private const val EXPERIMENTAL_ASSET_PREFIX = "app-experimental-"
     private const val RELEASE_ASSET_PREFIX =
         "https://github.com/jbriones95/DPAD-Messaging/releases/download/"
@@ -47,17 +46,18 @@ object UpdateManager {
         @SerialName("browser_download_url") val downloadUrl: String
     )
 
-    suspend fun check(context: Context): Result {
+    suspend fun check(
+        context: Context,
+        onDownloadProgress: suspend (downloadedBytes: Long, totalBytes: Long) -> Unit = { _, _ -> }
+    ): Result {
         return try {
             val experimental = BuildConfig.UPDATE_CHANNEL == "experimental" ||
                 (BuildConfig.UPDATE_CHANNEL == "production" && Prefs.get().experimentalUpdates)
             val release = fetchRelease(experimental)
             val asset = if (experimental) {
-                release.assets
-                    .filter { it.name.startsWith(EXPERIMENTAL_ASSET_PREFIX) && it.name.endsWith(".apk") }
-                    .maxByOrNull { experimentalVersionCode(it.name) }
+                selectExperimentalAsset(release.assets)
             } else {
-                release.assets.firstOrNull { it.name == RELEASE_ASSET_NAME }
+                selectStableAsset(release.assets)
             }
                 ?: return Result.Error("The release APK was not found")
             if (!asset.downloadUrl.startsWith(RELEASE_ASSET_PREFIX)) {
@@ -72,9 +72,11 @@ object UpdateManager {
             }
 
             val versionName = release.tagName.removePrefix("v")
-            val apk = downloadApk(context, asset.downloadUrl, versionName)
+            val apk = downloadApk(context, asset.downloadUrl, versionName, onDownloadProgress)
             validateApk(context, apk)
             Result.Available(versionName, release.body.orEmpty(), apk)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.Error(e.message ?: "Could not check for updates")
         }
@@ -97,12 +99,61 @@ object UpdateManager {
         }
     }
 
-    private fun experimentalVersionCode(assetName: String): Long {
-        return Regex("^${EXPERIMENTAL_ASSET_PREFIX}(\\d+)\\.apk$")
-            .matchEntire(assetName)?.groupValues?.get(1)?.toLongOrNull() ?: -1L
+    private data class ExperimentalAsset(
+        val asset: Asset,
+        val versionCode: Long,
+        val abi: String?
+    )
+
+    private fun selectExperimentalAsset(assets: List<Asset>): Asset? {
+        val matchingAssets = assets.mapNotNull { asset ->
+            val match = Regex(
+                "^${EXPERIMENTAL_ASSET_PREFIX}(\\d+)(?:-(arm64-v8a|armeabi-v7a|x86|x86_64|universal))?\\.apk$"
+            ).matchEntire(asset.name) ?: return@mapNotNull null
+            ExperimentalAsset(
+                asset = asset,
+                versionCode = match.groupValues[1].toLongOrNull() ?: return@mapNotNull null,
+                abi = match.groupValues[2].takeIf { it.isNotEmpty() }
+            )
+        }
+        val newestVersion = matchingAssets.maxOfOrNull { it.versionCode } ?: return null
+        val newestAssets = matchingAssets.filter { it.versionCode == newestVersion }
+        return selectBestAbiAsset(newestAssets.map { it.asset to it.abi })
     }
 
-    private fun downloadApk(context: Context, url: String, versionName: String): File {
+    private fun experimentalVersionCode(assetName: String): Long =
+        Regex("^${EXPERIMENTAL_ASSET_PREFIX}(\\d+)(?:-[a-z0-9-]+)?\\.apk$")
+            .matchEntire(assetName)?.groupValues?.get(1)?.toLongOrNull() ?: -1L
+
+    private fun selectStableAsset(assets: List<Asset>): Asset? {
+        val candidates = assets.mapNotNull { asset ->
+            when (asset.name) {
+                "app-release.apk" -> asset to null // Legacy universal release asset.
+                "app-release-universal.apk" -> asset to "universal"
+                else -> {
+                    val abi = asset.name.removePrefix("app-release-").removeSuffix(".apk")
+                    if (abi in SUPPORTED_ABIS) asset to abi else null
+                }
+            }
+        }
+        return selectBestAbiAsset(candidates)
+    }
+
+    private fun selectBestAbiAsset(candidates: List<Pair<Asset, String?>>): Asset? {
+        val byAbi = candidates.mapNotNull { (asset, abi) -> abi?.let { it to asset } }.toMap()
+        return Build.SUPPORTED_ABIS.firstNotNullOfOrNull { abi -> byAbi[abi] }
+            ?: byAbi["universal"]
+            ?: candidates.firstOrNull { it.second == null }?.first
+    }
+
+    private val SUPPORTED_ABIS = setOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+
+    private suspend fun downloadApk(
+        context: Context,
+        url: String,
+        versionName: String,
+        onProgress: suspend (downloadedBytes: Long, totalBytes: Long) -> Unit
+    ): File {
         val updateDir = File(context.cacheDir, "updates").apply { mkdirs() }
         val target = File(updateDir, "dpad-messaging-$versionName.apk")
         val temporary = File(updateDir, "$versionName.apk.part")
@@ -113,11 +164,36 @@ object UpdateManager {
             setRequestProperty("User-Agent", "DPAD-Messaging/${BuildConfig.VERSION_NAME}")
         }
 
-        connection.useConnection { input ->
-            if (input.responseCode !in 200..299) {
-                throw IllegalStateException("Download failed with HTTP ${input.responseCode}")
+        try {
+            connection.useConnection { input ->
+                if (input.responseCode !in 200..299) {
+                    throw IllegalStateException("Download failed with HTTP ${input.responseCode}")
+                }
+                val totalBytes = input.contentLengthLong
+                var downloadedBytes = 0L
+                var lastReportedBytes = 0L
+                temporary.outputStream().buffered().use { output ->
+                    input.inputStream.buffered().use { stream ->
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        while (true) {
+                            val count = stream.read(buffer)
+                            if (count < 0) break
+                            output.write(buffer, 0, count)
+                            downloadedBytes += count
+                            if (downloadedBytes - lastReportedBytes >= 512 * 1024 ||
+                                (totalBytes > 0 && downloadedBytes >= totalBytes)
+                            ) {
+                                onProgress(downloadedBytes, totalBytes)
+                                lastReportedBytes = downloadedBytes
+                            }
+                        }
+                    }
+                }
+                onProgress(downloadedBytes, totalBytes)
             }
-            temporary.outputStream().use { output -> input.inputStream.use { it.copyTo(output) } }
+        } catch (e: Exception) {
+            temporary.delete()
+            throw e
         }
         if (target.exists()) target.delete()
         if (!temporary.renameTo(target)) throw IllegalStateException("Could not save the update")

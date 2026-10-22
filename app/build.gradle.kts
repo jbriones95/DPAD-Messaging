@@ -16,6 +16,18 @@ android {
     namespace = "com.dpad.messaging"
     compileSdk = 34
 
+    // Produce ABI-specific APKs to avoid making each phone download native
+    // libraries for architectures it cannot run. Keep a universal APK as a
+    // compatibility fallback for architectures not listed here.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+            isUniversalApk = true
+        }
+    }
+
     defaultConfig {
         applicationId = "com.dpadsms"
         minSdk = 23

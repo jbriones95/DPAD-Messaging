@@ -68,9 +68,10 @@ DPAD Messaging keeps the important actions close, predictable, and usable withou
 EXPERIMENTAL_VERSION_CODE=1048001 ./gradlew assembleExperimental
 ```
 
-The APK will be generated at `app/build/outputs/apk/debug/app-debug.apk`,
-`app/build/outputs/apk/release/app-release.apk`, or
-`app/build/outputs/apk/experimental/app-experimental.apk`.
+Release and experimental builds generate ABI-specific APKs for ARM64, 32-bit
+ARM, x86, and x86_64, plus a universal fallback APK, under their respective
+`app/build/outputs/apk/<variant>/` directories. Use the APK matching the target
+device when distributing a build; the universal APK is substantially larger.
 
 General releases are published only from explicit `v*` tags. Pushes to `master`
 build a signed experimental prerelease at the GitHub `experimental` tag. Both
