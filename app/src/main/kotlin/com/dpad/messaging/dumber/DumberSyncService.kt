@@ -20,8 +20,11 @@ class DumberSyncService: Service() {
         val manager = getSystemService(NotificationManager::class.java)
         if(Build.VERSION.SDK_INT >= 26) manager.createNotificationChannel(NotificationChannel(CHANNEL,"dumber.chat connection",NotificationManager.IMPORTANCE_LOW))
         val open = PendingIntent.getActivity(this,0,Intent(this,DumberConnectActivity::class.java),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val notification = NotificationCompat.Builder(this,CHANNEL).setSmallIcon(R.drawable.ic_new_message)
-            .setContentTitle("dumber.chat").setContentText("Receiving encrypted messages for connected numbers").setContentIntent(open).setOngoing(true).setSilent(true).build()
+        val notification = NotificationCompat.Builder(this,CHANNEL).setSmallIcon(R.drawable.ic_dumber_sync)
+            .setContentTitle("dumber.chat encrypted sync").setContentText("Protecting connected numbers")
+            // Keep the service foreground for dependable receive, but allow users
+            // to swipe this status notification away when their Android version permits it.
+            .setContentIntent(open).setSilent(true).build()
         startForeground(8090,notification)
         if(!DumberAccount.enabled(this) || Telephony.Sms.getDefaultSmsPackage(this) != packageName) { stopSelf(); return START_NOT_STICKY }
         if(job?.isActive != true) job = scope.launch {
