@@ -8,9 +8,9 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
-import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlinx.coroutines.CancellationException
 
 object UpdateManager {
     private const val RELEASES_API_URL =
@@ -47,7 +47,10 @@ object UpdateManager {
         @SerialName("browser_download_url") val downloadUrl: String
     )
 
-    suspend fun check(context: Context): Result {
+    suspend fun check(
+        context: Context,
+        onDownloadProgress: suspend (downloadedBytes: Long, totalBytes: Long) -> Unit = { _, _ -> }
+    ): Result {
         return try {
             val experimental = BuildConfig.UPDATE_CHANNEL == "experimental" ||
                 (BuildConfig.UPDATE_CHANNEL == "production" && Prefs.get().experimentalUpdates)
@@ -72,9 +75,11 @@ object UpdateManager {
             }
 
             val versionName = release.tagName.removePrefix("v")
-            val apk = downloadApk(context, asset.downloadUrl, versionName)
+            val apk = downloadApk(context, asset.downloadUrl, versionName, onDownloadProgress)
             validateApk(context, apk)
             Result.Available(versionName, release.body.orEmpty(), apk)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.Error(e.message ?: "Could not check for updates")
         }
@@ -102,7 +107,12 @@ object UpdateManager {
             .matchEntire(assetName)?.groupValues?.get(1)?.toLongOrNull() ?: -1L
     }
 
-    private fun downloadApk(context: Context, url: String, versionName: String): File {
+    private suspend fun downloadApk(
+        context: Context,
+        url: String,
+        versionName: String,
+        onProgress: suspend (downloadedBytes: Long, totalBytes: Long) -> Unit
+    ): File {
         val updateDir = File(context.cacheDir, "updates").apply { mkdirs() }
         val target = File(updateDir, "dpad-messaging-$versionName.apk")
         val temporary = File(updateDir, "$versionName.apk.part")
@@ -113,11 +123,36 @@ object UpdateManager {
             setRequestProperty("User-Agent", "DPAD-Messaging/${BuildConfig.VERSION_NAME}")
         }
 
-        connection.useConnection { input ->
-            if (input.responseCode !in 200..299) {
-                throw IllegalStateException("Download failed with HTTP ${input.responseCode}")
+        try {
+            connection.useConnection { input ->
+                if (input.responseCode !in 200..299) {
+                    throw IllegalStateException("Download failed with HTTP ${input.responseCode}")
+                }
+                val totalBytes = input.contentLengthLong
+                var downloadedBytes = 0L
+                var lastReportedBytes = 0L
+                temporary.outputStream().buffered().use { output ->
+                    input.inputStream.buffered().use { stream ->
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        while (true) {
+                            val count = stream.read(buffer)
+                            if (count < 0) break
+                            output.write(buffer, 0, count)
+                            downloadedBytes += count
+                            if (downloadedBytes - lastReportedBytes >= 512 * 1024 ||
+                                (totalBytes > 0 && downloadedBytes >= totalBytes)
+                            ) {
+                                onProgress(downloadedBytes, totalBytes)
+                                lastReportedBytes = downloadedBytes
+                            }
+                        }
+                    }
+                }
+                onProgress(downloadedBytes, totalBytes)
             }
-            temporary.outputStream().use { output -> input.inputStream.use { it.copyTo(output) } }
+        } catch (e: Exception) {
+            temporary.delete()
+            throw e
         }
         if (target.exists()) target.delete()
         if (!temporary.renameTo(target)) throw IllegalStateException("Could not save the update")

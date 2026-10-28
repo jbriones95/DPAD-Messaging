@@ -123,7 +123,7 @@ class SmsReceiver : BroadcastReceiver() {
         body: String,
         timestamp: Long
     ) {
-        Log.d("DPAD_MSG", "SmsReceiver.processMessage() address=$address body='${body.take(40)}'")
+        Log.d("DPAD_MSG", "SmsReceiver.processMessage() address=$address")
 
         // ── MDM hard-filter — must run first, before any thread/insert side effects ──
         val filterResult = try {

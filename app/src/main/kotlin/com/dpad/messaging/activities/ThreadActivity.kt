@@ -1623,6 +1623,7 @@ class ThreadActivity : BaseActivity() {
         binding.etMessage.requestFocus()
 
         lifecycleScope.launch(Dispatchers.IO) {
+            try {
             val hasAttachment = attachments.isNotEmpty()
             val mode = SendingRouter.decideSendingMode(
                 hasAttachment = hasAttachment,
@@ -1736,6 +1737,14 @@ class ThreadActivity : BaseActivity() {
             }
             scrollToBottomAfterSend = true
             withContext(Dispatchers.Main) { loadMessages() }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    if (binding.etMessage.text.isNullOrEmpty()) binding.etMessage.setText(body)
+                    else binding.etMessage.append("\n" + body)
+                    android.widget.Toast.makeText(this@ThreadActivity, e.message ?: "Unable to send", android.widget.Toast.LENGTH_LONG).show()
+                }
+            }
         }
     }
 
