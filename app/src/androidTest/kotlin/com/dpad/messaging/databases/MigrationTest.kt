@@ -33,7 +33,22 @@ class MigrationTest {
     }
 
     @Test
-    fun migrate6To8() {
+    fun migrate8To9KeepsOldMessagesUnencrypted() {
+        helper.createDatabase(testDb, 8).apply {
+            execSQL("INSERT INTO messages VALUES (1, 2, 'old SMS', 1, 100, 100, 1, '+15555550101', '', '', 0, -1, -1, 0, NULL, '', '')")
+            close()
+        }
+        helper.runMigrationsAndValidate(testDb, 9, true, MessagesDatabase.MIGRATION_8_9).use { db ->
+            db.query("SELECT body,is_encrypted FROM messages WHERE id=1").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("old SMS", cursor.getString(0))
+                assertEquals(0, cursor.getInt(1))
+            }
+        }
+    }
+
+    @Test
+    fun migrate6To9PreservesRecycleEntries() {
         val oldDb = helper.createDatabase(testDb, 6)
         oldDb.execSQL(
             """INSERT INTO recycle_bin_messages (id, address, sender_name, body, date, deleted_ts)
@@ -43,10 +58,11 @@ class MigrationTest {
 
         val migratedDb = helper.runMigrationsAndValidate(
             testDb,
-            8,
+            9,
             true,
             MessagesDatabase.MIGRATION_6_7,
-            MessagesDatabase.MIGRATION_7_8
+            MessagesDatabase.MIGRATION_7_8,
+            MessagesDatabase.MIGRATION_8_9
         )
         migratedDb.query(
             "SELECT provider_id, thread_id, is_mms, is_conversation, message_type, was_read, participants_json, body FROM recycle_bin_messages WHERE id = 42"

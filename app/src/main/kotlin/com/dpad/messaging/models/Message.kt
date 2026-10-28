@@ -81,7 +81,15 @@ data class Message(
 
     /** For group MMS: JSON array of participant phone numbers */
     @ColumnInfo(name = "participants_json")
-    val participantsJson: String = "[]"
+    val participantsJson: String = "[]",
+
+    /**
+     * Marks a message received through an encrypted transport. Always false in
+     * this build; retained so the database schema stays compatible with builds
+     * that support encrypted messaging.
+     */
+    @ColumnInfo(name = "is_encrypted", defaultValue = "0")
+    val isEncrypted: Boolean = false
 ) {
     val isIncoming: Boolean get() = type == TYPE_INBOX
     val isOutgoing: Boolean get() = !isIncoming
