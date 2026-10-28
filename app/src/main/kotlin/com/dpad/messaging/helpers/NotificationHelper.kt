@@ -87,7 +87,13 @@ object NotificationHelper {
             R.drawable.ic_send,
             context.getString(R.string.reply),
             replyPI
-        ).addRemoteInput(remoteInput).build()
+        )
+            .addRemoteInput(remoteInput)
+            // Explicit action metadata helps notification listeners and companion
+            // devices recognize this as a reply affordance and offer smart replies.
+            .setAllowGeneratedReplies(true)
+            .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_REPLY)
+            .build()
 
         // ── Mark as Read action ───────────────────────────────────────────────
         val markReadPI = PendingIntent.getBroadcast(

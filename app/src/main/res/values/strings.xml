@@ -311,6 +311,9 @@
     <string name="check_for_updates">Check for updates</string>
     <string name="check_for_updates_summary">Download and install the latest signed release</string>
     <string name="checking_for_updates">Checking for updates…</string>
+    <string name="downloading_update">Downloading update…</string>
+    <string name="update_download_progress">Downloaded %1$s of %2$s (%3$d%%)</string>
+    <string name="update_download_unknown_size">Downloaded %1$s</string>
     <string name="app_up_to_date">You are up to date</string>
     <string name="update_available">Update available: %1$s</string>
     <string name="update_available_summary">A newer release is ready to install.</string>
