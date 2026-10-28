@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.9
+
+- Reply directly to a message from its notification, without opening the app. Watches and companion apps that support notification actions can offer Reply, voice replies and canned replies.
+- Checking for updates now shows download progress, so a slow or failed download is visible instead of appearing to hang.
+- If a message cannot be sent, the text is put back in the message box and the error is shown, so it is not lost.
+- Release builds are verified against the expected signing certificate before publishing.
+
 ## 0.5.8
 
 - Read status and message counts refresh more reliably when you open or read a conversation, including when a new message arrives while it is open.

@@ -1,0 +1,5 @@
+Reply directly from a message notification, without opening the app. Watches and companion apps can now offer Reply, voice replies and canned replies.
+
+Checking for updates shows download progress, so slow or failed downloads are visible instead of appearing to hang.
+
+If a message cannot be sent, its text is restored to the message box with the error shown.
