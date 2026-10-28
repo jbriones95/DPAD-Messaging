@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.9.1
+
+- Fixes a crash for anyone who installed an experimental build that used a newer message database layout. The app can read the newer layout again and keeps existing messages and app data.
+- This update is only needed if the app closes immediately after opening; it does not change normal messaging behavior.
+
 ## 0.5.9
 
 - Reply directly to a message from its notification, without opening the app. Watches and companion apps that support notification actions can offer Reply, voice replies and canned replies.

@@ -1,0 +1,1 @@
+Fixes a crash that could happen after installing an experimental build with a newer message database layout. The app opens normally again and keeps your existing messages and app data. Only needed if the app closes immediately after opening.
