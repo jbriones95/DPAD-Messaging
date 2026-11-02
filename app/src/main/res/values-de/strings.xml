@@ -1,0 +1,323 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DPAD SMS</string>
+
+    <!-- ─── Navigation / Actions ─── -->
+    <string name="new_conversation">Neu</string>
+    <string name="new_conversation_long">Neue Unterhaltung</string>
+    <string name="search">Suchen</string>
+    <string name="settings">Einstellungen</string>
+    <string name="archived">Archiviert</string>
+    <string name="recycle_bin">Papierkorb</string>
+    <string name="back">Zurück</string>
+    <string name="call">Anrufen</string>
+    <string name="send_message">Nachricht senden</string>
+    <string name="add_to_contacts">Zu Kontakten hinzufügen</string>
+    <string name="details">Details</string>
+    <string name="conversation_options">Unterhaltungsoptionen</string>
+    <string name="conversation_options_for">Optionen für %1$s</string>
+    <string name="unread_messages">%1$d ungelesene Nachrichten</string>
+    <string name="no_unread_messages">Keine ungelesenen Nachrichten</string>
+    <string name="pinned_conversation">Angeheftet</string>
+    <string name="muted_conversation">Stummgeschaltet</string>
+    <string name="ok">OK</string>
+    <string name="cancel">Abbrechen</string>
+    <string name="save">Speichern</string>
+    <string name="delete">Löschen</string>
+    <string name="yes">Ja</string>
+    <string name="no">Nein</string>
+    <string name="more">Mehr</string>
+
+    <!-- ─── Conversation List ─── -->
+    <string name="no_conversations">Noch keine Nachrichten.\nDrücken Sie auf „Neu“, um eine Unterhaltung zu starten.</string>
+    <string name="no_search_results">Keine Unterhaltungen entsprechen Ihrer Suche.</string>
+    <string name="attachments_selected">%1$d Anhänge ausgewählt</string>
+    <string name="selection_count">%1$d ausgewählt</string>
+    <string name="select_conversation">Unterhaltung auswählen</string>
+    <string name="loading_conversations">Unterhaltungen werden geladen…</string>
+    <string name="conversations_load_failed">Unterhaltungen konnten nicht geladen werden.</string>
+    <string name="retry">Erneut versuchen</string>
+    <string name="conversation_archived">Unterhaltung archiviert</string>
+    <string name="undo">Rückgängig</string>
+
+    <!-- ─── Thread / Compose ─── -->
+    <string name="type_message">Nachricht eingeben…</string>
+    <string name="send">Senden</string>
+    <string name="next">Weiter</string>
+    <string name="attach">Anhängen</string>
+    <string name="empty_message">Leere Nachricht</string>
+    <string name="message_description_sent">Gesendete Nachricht: %1$s</string>
+    <string name="message_description_received">Empfangene Nachricht: %1$s</string>
+    <string name="message_context_position">Nachricht %1$d von %2$d</string>
+    <string name="schedule">Planen</string>
+    <string name="schedule_set">Zeit festlegen</string>
+    <string name="schedule_change">Zeit ändern</string>
+    <string name="schedule_cancel">Geplanten Versand abbrechen</string>
+    <string name="scheduled_for">Später senden: %1$s</string>
+    <string name="schedule_picker_title">Sendezeit auswählen</string>
+    <string name="sending">Wird gesendet…</string>
+    <string name="sending_later">Geplant</string>
+    <string name="message_failed">Senden fehlgeschlagen. Zum erneuten Versuch tippen.</string>
+    <string name="delivered">Zugestellt</string>
+    <string name="message_copied">Nachricht kopiert</string>
+    <string name="message_blocked_by_policy">Nachricht blockiert: Kontaktieren Sie Ihren Administrator.</string>
+
+    <!-- ─── Context Menu Actions ─── -->
+    <string name="mark_as_read">Als gelesen markieren</string>
+    <string name="mark_as_unread">Als ungelesen markieren</string>
+    <string name="archive">Archivieren</string>
+    <string name="unarchive">Aus Archiv entfernen</string>
+    <string name="pin">Anheften</string>
+    <string name="unpin">Lösen</string>
+    <string name="block">Blockieren</string>
+    <string name="copy_number">Nummer kopieren</string>
+    <string name="mute_conversation">Unterhaltung stummschalten</string>
+    <string name="unmute_conversation">Stummschaltung aufheben</string>
+    <string name="move_to_recycle_bin">In den Papierkorb verschieben</string>
+    <string name="restore">Wiederherstellen</string>
+    <string name="forward">Weiterleiten</string>
+    <string name="copy_text">Text kopieren</string>
+    <string name="retry_send">Erneut senden</string>
+    <string name="cancel_scheduled_message">Geplante Nachricht abbrechen</string>
+    <string name="reply">Antworten</string>
+
+    <!-- ─── Conversation Details ─── -->
+    <string name="conversation_details">Unterhaltungsdetails</string>
+    <string name="participants">Teilnehmer</string>
+    <string name="participant_count">%1$d Teilnehmer</string>
+    <string name="rename_conversation">Unterhaltung umbenennen</string>
+    <string name="contact_color">Kontaktfarbe</string>
+    <string name="contact_color_current">Aktuelle Farbe: %1$s</string>
+    <string name="contact_color_automatic">Automatisch</string>
+    <string name="contact_color_option">Kontaktfarbe: %1$s</string>
+    <string name="contact_color_option_selected">Kontaktfarbe: %1$s, ausgewählt</string>
+    <string name="appearance">Darstellung</string>
+    <string name="conversation_actions">Unterhaltung</string>
+    <string name="danger_zone">Gefahrenbereich</string>
+    <string name="choose_contact_color">Farbe auswählen</string>
+    <string name="enter_recipients_hint">Empfänger mit + hinzufügen oder Nummer eingeben</string>
+    <string name="new_thread_hint">Nummer eingeben und die mittlere Taste drücken oder + verwenden, um Kontakte hinzuzufügen</string>
+    <string name="to_label">An:</string>
+    <string name="add_recipient">Empfänger hinzufügen</string>
+    <string name="remove_recipient">Empfänger entfernen</string>
+    <string name="today">Heute</string>
+    <string name="yesterday">Gestern</string>
+
+    <!-- ─── Permissions ─── -->
+    <string name="permission_denied">Zugriff verweigert. Einige Funktionen funktionieren möglicherweise nicht.</string>
+
+    <!-- ─── Default SMS App ─── -->
+    <string name="search_hint">Nachrichten suchen…</string>
+
+    <!-- ─── Settings ─── -->
+    <string name="general">Allgemein</string>
+    <string name="app_theme">Design</string>
+    <string name="app_theme_summary">Hell, Dunkel oder Systemeinstellung auswählen</string>
+    <string name="theme_system">System</string>
+    <string name="theme_light">Hell</string>
+    <string name="theme_dark">Dunkel</string>
+    <string name="accent_color">Akzentfarbe</string>
+    <string name="accent_color_summary">Hervorhebungsfarbe der App anpassen</string>
+    <string name="accent_blue">Blau</string>
+    <string name="accent_green">Grün</string>
+    <string name="accent_orange">Orange</string>
+    <string name="accent_rose">Rosa</string>
+    <string name="date_format">Datumsformat</string>
+    <string name="date_format_summary">Reihenfolge der Datumsbestandteile</string>
+    <string name="date_mdy">MM/DD/YY (Amerikanisch)</string>
+    <string name="date_dmy">DD/MM/YY (Europäisch)</string>
+    <string name="time_format">Zeitformat</string>
+    <string name="time_format_summary">12- oder 24-Stunden-Anzeige</string>
+    <string name="time_12h">12-Stunden (1:30 PM)</string>
+    <string name="time_24h">24-Stunden (13:30)</string>
+    <string name="ui_scale">Textgröße</string>
+    <string name="ui_scale_summary">Textgröße für Ihren Bildschirm anpassen</string>
+    <string name="ui_scale_compact">Kompakt (kleiner)</string>
+    <string name="ui_scale_normal">Normal</string>
+    <string name="ui_scale_large">Groß</string>
+    <string name="ui_scale_xlarge">Sehr groß</string>
+    <string name="attachment_preview_size">Bildvorschaugröße</string>
+    <string name="attachment_preview_size_summary">Größe der in Nachrichten angezeigten Bilder auswählen</string>
+    <string name="attachment_preview_small">Klein</string>
+    <string name="attachment_preview_normal">Normal</string>
+    <string name="attachment_preview_large">Groß</string>
+    <string name="attach_image_audio">Bild / Audio</string>
+    <string name="attach_voice_message">Sprachnachricht</string>
+    <string name="attach_contact">Kontakt</string>
+    <string name="attach_camera">Kamera</string>
+    <string name="messaging">Nachrichten</string>
+    <string name="privacy">Datenschutz</string>
+    <string name="storage">Speicher</string>
+    <string name="other">Sonstiges</string>
+    <string name="notifications">Benachrichtigungen</string>
+    <string name="notifications_summary">Benachrichtigungskanäle konfigurieren</string>
+    <string name="message_notification_style">Benachrichtigungsstil</string>
+    <string name="message_notification_style_summary">Auswählen, ob neue Nachrichten als Banner angezeigt werden</string>
+    <string name="notification_style_heads_up">Bannerbenachrichtigung</string>
+    <string name="notification_style_quiet">Stille Benachrichtigung</string>
+    <string name="message_vibration_style">Vibration für Nachrichten</string>
+    <string name="message_vibration_style_summary">Vibrationsmuster für neue Nachrichten auswählen</string>
+    <string name="vibration_style_long">Ein langer Vibrationsimpuls</string>
+    <string name="vibration_style_double">Zwei kurze Vibrationsimpulse</string>
+    <string name="message_notifications">Nachrichtenbenachrichtigungen</string>
+    <string name="message_notifications_summary">Benachrichtigungen für eingehende SMS und MMS</string>
+    <string name="failure_notifications">Benachrichtigung bei Sendefehlern</string>
+    <string name="failure_notifications_summary">Warnung, wenn eine Nachricht nicht gesendet werden konnte</string>
+    <string name="mms_settings">MMS-Einstellungen</string>
+    <string name="delivery_reports">Zustellberichte</string>
+    <string name="delivery_reports_summary">Anzeigen, wenn SMS zugestellt wurden</string>
+    <string name="send_on_enter">Mit Enter senden</string>
+    <string name="send_on_enter_summary">Nachricht durch Drücken der Enter-Taste senden</string>
+    <string name="character_counter">Zeichenzähler</string>
+    <string name="character_counter_summary">SMS-Länge und Anzahl der Segmente anzeigen</string>
+    <string name="send_group_message_mms">Gruppennachrichten per MMS</string>
+    <string name="send_group_message_mms_summary">Textantworten in Gruppenchats in einem Thread halten. Deaktivieren, um stattdessen einzelne SMS zu senden.</string>
+    <string name="auto_download_mms">MMS automatisch herunterladen</string>
+    <string name="auto_download_mms_summary">Eingehende Bilder und Dateien automatisch herunterladen</string>
+    <string name="lock_screen_privacy">Datenschutz auf Sperrbildschirm</string>
+    <string name="lock_screen_privacy_summary">Festlegen, welche Informationen auf dem Sperrbildschirm angezeigt werden</string>
+    <string name="show_sender_and_message">Absender und Nachricht anzeigen</string>
+    <string name="show_sender_only">Nur Absender anzeigen</string>
+    <string name="show_no_message_details">Keine Nachrichtendetails anzeigen</string>
+    <string name="silent_unknown_senders">Unbekannte Absender stummschalten</string>
+    <string name="silent_unknown_senders_summary">Keine Töne oder Banner für Nummern, die nicht in den Kontakten sind</string>
+    <string name="manage_blocked_keywords">Blockierte Schlüsselwörter</string>
+    <string name="blocked_keywords_summary">Benachrichtigungen von Nachrichten mit bestimmten Schlüsselwörtern blockieren</string>
+    <string name="manage_blocked_numbers">Blockierte Nummern</string>
+    <string name="blocked_numbers_summary">Nachrichten dieser Nummern blockieren</string>
+    <string name="blocked_numbers">Blockierte Nummern</string>
+    <string name="recycle_bin_enabled">Papierkorb verwenden</string>
+    <string name="recycle_bin_enabled_summary">Gelöschte Nachrichten zuerst in den Papierkorb verschieben</string>
+    <string name="about">Info</string>
+    <string name="version">Version</string>
+    <string name="new_message">Neue Nachricht</string>
+    <string name="mms_download_pending_title">MMS wartet auf Download</string>
+    <string name="mms_download_pending_text">Zum Herunterladen tippen.</string>
+    <string name="download_mms">Herunterladen</string>
+
+    <!-- ─── Blocked Keywords ─── -->
+    <string name="add_keyword">Schlüsselwort hinzufügen</string>
+    <string name="enter_keyword">Schlüsselwort eingeben…</string>
+    <string name="no_blocked_keywords">Keine blockierten Schlüsselwörter.</string>
+    <string name="delete_keyword_confirm">Dieses Schlüsselwort löschen?</string>
+    <string name="add_number">Nummer hinzufügen</string>
+    <string name="enter_number">Nummer eingeben…</string>
+    <string name="no_blocked_numbers">Keine blockierten Nummern.</string>
+    <string name="delete_number_confirm">Diese Nummer löschen?</string>
+
+    <!-- ─── Empty States ─── -->
+    <string name="no_archived">Keine archivierten Unterhaltungen.</string>
+    <string name="no_recycle_bin">Der Papierkorb ist leer.</string>
+
+    <!-- ─── Errors ─── -->
+    <string name="error_sending_message">Nachricht konnte nicht gesendet werden.</string>
+    <string name="error_picking_contact">Der ausgewählte Kontakt konnte nicht gelesen werden.</string>
+    <string name="sms_send_error_generic_failure">SMS fehlgeschlagen: allgemeiner Netzwerkfehler.</string>
+    <string name="sms_send_error_radio_off">SMS fehlgeschlagen: Mobilfunk ist ausgeschaltet.</string>
+    <string name="sms_send_error_null_pdu">SMS fehlgeschlagen: ungültige Nachrichtendaten.</string>
+    <string name="sms_send_error_no_service">SMS fehlgeschlagen: kein Mobilfunkempfang.</string>
+    <string name="sms_send_error_unknown">SMS fehlgeschlagen (Code %1$d).</string>
+    <string name="mms_send_error_http">MMS vom Mobilfunkanbieter abgelehnt (HTTP %1$d).</string>
+    <string name="mms_send_error_unknown">MMS fehlgeschlagen (Code %1$d).</string>
+    <string name="scheduled_send_failed_title">Geplante Nachricht fehlgeschlagen</string>
+    <string name="scheduled_send_failed_body">Eine geplante Nachricht konnte nicht gesendet werden.</string>
+    <string name="scheduled_send_failed_exact_alarm_body">Geplanter Versand fehlgeschlagen, da exakte Alarme nicht verfügbar sind.</string>
+    <string name="scheduled_send_inexact_title">Geplanter Versand könnte sich verzögern</string>
+    <string name="scheduled_send_inexact_body">Exakte Alarme sind nicht verfügbar; der geplante Versand erfolgt ungefähr zur geplanten Zeit.</string>
+
+    <!-- ─── SIM / Dual-SIM ─── -->
+    <string name="select_sim">SIM auswählen</string>
+    <string name="sim_label">SIM %d</string>
+
+    <!-- ─── Attachments / MMS Sending ─── -->
+    <string name="remove_attachment">Anhang entfernen</string>
+    <string name="image_attached">Bild angehängt</string>
+    <string name="image_attachment_preview">Bildanhang-Vorschau</string>
+    <string name="scheduled_indicator">Geplant-Anzeige</string>
+    <string name="message_attachment_preview">Vorschau des Nachrichtenanhangs</string>
+    <string name="schedule_step_decrement">-</string>
+    <string name="schedule_step_increment">+</string>
+    <string name="recipient_chip_remove">%1$s ×</string>
+    <string name="sms_char_counter_format">%1$d/%2$d</string>
+    <string name="image_viewer_zoom_percent">%1$d%%</string>
+    <string name="image_viewer_content_description">Bildbetrachter</string>
+    <string name="image_viewer_zoom_default">100%%</string>
+    <string name="save_photo_to_gallery">In Galerie speichern</string>
+    <string name="photo_saved_to_gallery">Foto in Galerie gespeichert</string>
+    <string name="photo_save_failed">Foto konnte nicht in der Galerie gespeichert werden</string>
+    <string name="choose_attachment_app">App auswählen</string>
+    <string name="scheduled_message_canceled">Geplante Nachricht abgebrochen</string>
+    <string name="voice_input">Spracheingabe</string>
+    <string name="voice_record">Sprachnachricht aufnehmen</string>
+    <string name="voice_record_stop">Aufnahme beenden</string>
+    <string name="voice_input_unavailable">Spracheingabe ist auf diesem Gerät nicht verfügbar.</string>
+    <string name="voice_input_empty_result">Keine Sprache erkannt.</string>
+    <string name="voice_recording_started">Sprachnachricht wird aufgenommen…</string>
+    <string name="voice_recording_stopped">Sprachnachricht angehängt</string>
+    <string name="voice_recording_error">Sprachnachricht konnte nicht aufgenommen werden.</string>
+    <string name="voice_recording_too_large">Sprachnachricht ist zu groß für MMS.</string>
+    <string name="voice_replay">Sprachnachricht erneut abspielen</string>
+    <string name="voice_replay_stop">Wiedergabe beenden</string>
+    <string name="voice_replay_unavailable">Die aufgenommene Sprachnachricht konnte nicht abgespielt werden.</string>
+    <string name="attachment_too_large_generic">Anhang ist zu groß für MMS.</string>
+    <string name="audio_attachment_preview">Audioanhang-Vorschau</string>
+    <string name="attachment_audio_preview">Audioanhang</string>
+    <string name="attachment_generic_preview">Anhang bereit</string>
+    <string name="attachment_permission_needed">Zum Anhängen von Dateien ist die Speicherberechtigung erforderlich.</string>
+    <string name="audio_playback_unavailable">Keine App kann diesen Audioanhang abspielen.</string>
+    <string name="attachment_open_unavailable">Keine App kann diesen Anhang öffnen.</string>
+    <string name="save_attachments">Anhänge speichern</string>
+    <string name="share_attachment">Anhang teilen</string>
+    <string name="open_attachment">Anhang öffnen</string>
+    <string name="attachments_saved_count">%1$d Anhänge gespeichert.</string>
+    <string name="attachments_save_failed">Die Anhänge konnten nicht gespeichert werden.</string>
+    <string name="attachment_share_unavailable">Dieser Anhang konnte nicht geteilt werden.</string>
+    <string name="experimental_updates">Experimentelle Updates</string>
+    <string name="experimental_updates_summary">Frühe Builds vor der allgemeinen Veröffentlichung erhalten.</string>
+
+    <!-- Schedule picker labels -->
+    <string name="schedule_year">Jahr</string>
+    <string name="schedule_month">Monat</string>
+    <string name="schedule_day">Tag</string>
+    <string name="schedule_hour">Stunde</string>
+    <string name="schedule_minute">Minute</string>
+
+    <!-- Backup & Restore -->
+    <string name="backup">Sicherung &amp; Wiederherstellung</string>
+    <string name="backup_create">In Datei sichern</string>
+    <string name="backup_create_summary">Geplante Nachrichten, Entwürfe, Papierkorb, blockierte Listen und Einstellungen in einer JSON-Datei speichern</string>
+    <string name="backup_restore">Aus Datei wiederherstellen</string>
+    <string name="backup_restore_summary">Aktuelle Daten durch eine zuvor gespeicherte Sicherung ersetzen</string>
+    <string name="backup_success">Sicherung erfolgreich gespeichert</string>
+    <string name="backup_failed">Sicherung fehlgeschlagen:</string>
+    <string name="restore_success">Wiederherstellung abgeschlossen:</string>
+    <string name="restore_failed">Wiederherstellung fehlgeschlagen:</string>
+    <string name="recycle_bin_delete_failed">Dieses Element konnte nicht endgültig gelöscht werden.</string>
+    <string name="restore_invalid">Sicherungsdatei ist leer</string>
+    <string name="backup_warning_title">Warnung zu sensiblen Daten</string>
+    <string name="backup_warning_message">Die Sicherungsdatei enthält nur App-Daten: geplante Nachrichten, Entwürfe, Papierkorbeinträge, blockierte Listen, Unterhaltungseinstellungen und App-Einstellungen. Ihr SMS/MMS-Verlauf wird vom System gespeichert und ist nicht enthalten. Die Datei ist verschlüsselt und kann nur auf diesem Gerät wiederhergestellt werden, nicht auf einem anderen Gerät. Bewahren Sie die Datei an einem sicheren Ort auf.</string>
+    <string name="backup_confirm">Sicherung erstellen</string>
+    <string name="backup_queued">Sicherung im Hintergrund gestartet</string>
+    <string name="backup_running">Verschlüsselte Sicherung wird erstellt</string>
+    <string name="restore_running">Verschlüsselte Sicherung wird wiederhergestellt</string>
+    <string name="backup_complete">Sicherung und Wiederherstellung</string>
+    <string name="restore_complete">Wiederherstellung abgeschlossen</string>
+    <string name="backup_finished">Vorgang abgeschlossen</string>
+    <string name="restore_queued">Wiederherstellung im Hintergrund gestartet</string>
+    <string name="restore_preview_title">Wiederherstellung prüfen</string>
+    <string name="restore_preview_message">Dadurch werden App-Daten durch %1$d Unterhaltungen, %2$d Nachrichten und %3$d Anhänge ersetzt. Der SMS/MMS-Verlauf im Telefonie-Anbieter ist nicht enthalten.</string>
+    <string name="restore_confirm">Wiederherstellen</string>
+    <string name="backup_scope_summary">Nur App-Daten. Der SMS/MMS-Verlauf des Systems ist nicht enthalten.</string>
+    <string name="check_for_updates">Nach Updates suchen</string>
+    <string name="check_for_updates_summary">Die neueste signierte Version herunterladen und installieren</string>
+    <string name="checking_for_updates">Suche nach Updates…</string>
+    <string name="downloading_update">Update wird heruntergeladen…</string>
+    <string name="update_download_progress">%1$s von %2$s heruntergeladen (%3$d%%)</string>
+    <string name="update_download_unknown_size">%1$s heruntergeladen</string>
+    <string name="app_up_to_date">Sie sind auf dem neuesten Stand</string>
+    <string name="update_available">Update verfügbar: %1$s</string>
+    <string name="update_available_summary">Eine neuere Version kann installiert werden.</string>
+    <string name="install_update">Update installieren</string>
+    <string name="update_check_failed">Update-Suche fehlgeschlagen: %1$s</string>
+    <string name="update_installer_unavailable">Android konnte den Paketinstaller nicht öffnen</string>
+</resources>

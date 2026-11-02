@@ -9,8 +9,10 @@ DPAD Messaging is a community project, and translations are welcome. The app shi
 | Language | Folder | Status |
 | --- | --- | --- |
 | English | `app/src/main/res/values/` | Source of truth (290 strings) |
+| German | `app/src/main/res/values-de/` | Complete (290/290) |
+| Spanish | `app/src/main/res/values-es/` | Complete (290/290) |
 
-There are no community translations yet. [Open an issue](https://github.com/jbriones95/DPAD-Messaging/issues/new) if you would like to start one.
+German and Spanish are complete. More languages are welcome — [open an issue](https://github.com/jbriones95/DPAD-Messaging/issues/new?template=translation.yml) to start one.
 
 ## What needs translating
 

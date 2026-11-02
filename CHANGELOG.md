@@ -4,6 +4,7 @@
 
 - When "Use Recycle Bin" is off, the conversation and message menus now say **Delete**, matching what actually happens.
 - The app can now be translated by the community. If a translation exists for your phone's language, the app uses it automatically. See `TRANSLATING.md` to help.
+- Includes complete German and Spanish translations. The app follows your phone's language automatically.
 
 ## 0.5.9.1
 
