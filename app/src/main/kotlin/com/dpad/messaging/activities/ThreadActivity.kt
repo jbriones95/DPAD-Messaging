@@ -1766,6 +1766,9 @@ class ThreadActivity : BaseActivity() {
         } else {
             emptyList()
         }
+        val deleteLabel = getString(
+            if (Prefs.get().recycleBinEnabled) R.string.move_to_recycle_bin else R.string.delete
+        )
         val options = buildList {
             add(getString(R.string.copy_text))
             if (attachments.isNotEmpty()) {
@@ -1780,7 +1783,7 @@ class ThreadActivity : BaseActivity() {
                 if (message.type == Message.TYPE_FAILED) add(getString(R.string.retry_send))
             }
             add(getString(R.string.forward))
-            add(getString(R.string.move_to_recycle_bin))
+            add(deleteLabel)
         }.toTypedArray()
 
         AlertDialog.Builder(this)
@@ -1793,7 +1796,7 @@ class ThreadActivity : BaseActivity() {
                     getString(R.string.cancel_scheduled_message) -> cancelScheduledMessage(message)
                     getString(R.string.retry_send) -> retryMessage(message)
                     getString(R.string.forward) -> forwardMessage(message)
-                    getString(R.string.move_to_recycle_bin) -> deleteMessage(message)
+                    deleteLabel -> deleteMessage(message)
                 }
             }
             .create()

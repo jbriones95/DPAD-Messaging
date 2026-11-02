@@ -725,7 +725,7 @@ class MainActivity : BaseActivity() {
             add(0, 3, 3, if (conversation.archived) getString(R.string.unarchive) else getString(R.string.archive))
             add(0, 4, 4, if (Prefs.get().isThreadMuted(conversation.threadId)) getString(R.string.unmute_conversation) else getString(R.string.mute_conversation))
             add(0, 5, 5, getString(R.string.copy_number))
-            add(0, 6, 6, getString(R.string.move_to_recycle_bin))
+            add(0, 6, 6, getString(if (Prefs.get().recycleBinEnabled) R.string.move_to_recycle_bin else R.string.delete))
             add(0, 7, 7, getString(R.string.conversation_details))
         }
 
@@ -873,7 +873,7 @@ class MainActivity : BaseActivity() {
 
     private fun moveToRecycleBin(conversation: Conversation) {
         AlertDialog.Builder(this)
-            .setTitle(R.string.move_to_recycle_bin)
+            .setTitle(if (Prefs.get().recycleBinEnabled) R.string.move_to_recycle_bin else R.string.delete)
             .setMessage(conversation.title)
             .setPositiveButton(R.string.yes) { _, _ ->
                 lifecycleScope.launch(Dispatchers.IO) {
