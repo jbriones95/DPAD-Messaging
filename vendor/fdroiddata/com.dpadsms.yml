@@ -14,6 +14,12 @@ Binaries: https://github.com/jbriones95/DPAD-Messaging/releases/download/v%v/app
 AllowedAPKSigningKeys: c7eeb6b0a8089ead8ff786af45ffc545f4c4f7be38dd62655e42843eec91ed6e
 
 Builds:
+  - versionName: 0.5.11
+    versionCode: 10511000
+    commit: e27342c66f7f3de18d3419020268578bc5039c3f
+    subdir: app
+    gradle:
+      - yes
   - versionName: 0.5.10
     versionCode: 10510000
     commit: d432fa67abbd190203b79c1ef02e5e1d8ed92752
@@ -203,5 +209,5 @@ Builds:
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags ^v\d+\.\d+\.\d+$
-CurrentVersion: 0.5.10
-CurrentVersionCode: 10510000
+CurrentVersion: 0.5.11
+CurrentVersionCode: 10511000
