@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.10
+
+- When "Use Recycle Bin" is off, the conversation and message menus now say **Delete**, matching what actually happens.
+- The app can now be translated by the community. If a translation exists for your phone's language, the app uses it automatically. See `TRANSLATING.md` to help.
+
 ## 0.5.9.1
 
 - Fixes a crash for anyone who installed an experimental build that used a newer message database layout. The app can read the newer layout again and keeps existing messages and app data.
