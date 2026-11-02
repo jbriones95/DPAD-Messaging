@@ -1,0 +1,57 @@
+name: Translation
+description: Contribute a new language or improve an existing translation
+title: "Translation: "
+labels: ["translation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping translate DPAD Messaging. Read [TRANSLATING.md](https://github.com/jbriones95/DPAD-Messaging/blob/master/TRANSLATING.md) first — it lists every string and the rules for placeholders.
+
+        You do not need to translate everything. Missing strings fall back to English.
+  - type: input
+    id: language
+    attributes:
+      label: Language
+      description: The language name and code, for example German (de) or Brazilian Portuguese (pt-BR).
+      placeholder: German (de)
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What are you contributing?
+      options:
+        - New language
+        - Improvements to an existing translation
+        - Correction to a wrong or confusing translation
+    validations:
+      required: true
+  - type: textarea
+    id: translations
+    attributes:
+      label: Translations
+      description: Paste `key = text` lines, or attach a strings.xml file after opening the issue.
+      placeholder: |
+        settings = Einstellungen
+        delete = Löschen
+        new_conversation = Neu
+    validations:
+      required: false
+  - type: input
+    id: credit
+    attributes:
+      label: Credit
+      description: How should you be credited in the app and release notes?
+      placeholder: Your name or username
+    validations:
+      required: false
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: Placeholders such as %1$s and %1$d are unchanged.
+          required: true
+        - label: I am willing to answer follow-up questions about this translation.
+          required: true

@@ -17,7 +17,8 @@
 <p align="center">
   <a href="https://github.com/jbriones95/DPAD-Messaging/releases">Download</a> ·
   <a href="https://f-droid.org/packages/com.dpadsms/">F-Droid</a> ·
-  <a href="https://github.com/jbriones95/DPAD-Messaging/issues">Report an issue</a>
+  <a href="https://github.com/jbriones95/DPAD-Messaging/issues">Report an issue</a> ·
+  <a href="TRANSLATING.md">Translate</a>
 </p>
 
 ## Built for Physical Navigation
@@ -124,6 +125,10 @@ Encrypted, device-bound backup and restore of app-local data.
 If you find this app useful, consider supporting its development:
 
 [![Buy Me a Coffee](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://buymeacoffee.com/jbriones95)
+
+## Translating
+
+The app follows the phone's language when a translation exists. Community translations are welcome — see [TRANSLATING.md](TRANSLATING.md) for the full list of strings, the file format, and how to contribute. No Git experience is required.
 
 ## License
 
