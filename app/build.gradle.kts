@@ -20,8 +20,8 @@ android {
         applicationId = "com.dpadsms"
         minSdk = 23
         targetSdk = 34
-        versionCode = getSecret("EXPERIMENTAL_VERSION_CODE")?.toIntOrNull() ?: 10510000
-        versionName = "0.5.10"
+        versionCode = getSecret("EXPERIMENTAL_VERSION_CODE")?.toIntOrNull() ?: 10511000
+        versionName = "0.5.11"
         buildConfigField("String", "UPDATE_CHANNEL", "\"production\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

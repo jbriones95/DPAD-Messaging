@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.11
+
+- European date format now uses dots, for example 31.12.27 instead of 31/12/27. Choose it under Settings → Date Format.
+
 ## 0.5.10
 
 - When "Use Recycle Bin" is off, the conversation and message menus now say **Delete**, matching what actually happens.
