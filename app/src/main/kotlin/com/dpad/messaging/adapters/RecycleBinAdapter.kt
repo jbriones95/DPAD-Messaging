@@ -113,7 +113,7 @@ class RecycleBinAdapter(
                     SimpleDateFormat("EEE", Locale.getDefault()).format(Date(timestamp))
                 else ->
                     SimpleDateFormat(
-                        if (prefs.dateFormat == Prefs.DATE_FORMAT_DMY) "dd/MM/yy" else "MM/dd/yy",
+                        if (prefs.dateFormat == Prefs.DATE_FORMAT_DMY) "dd.MM.yy" else "MM/dd/yy",
                         Locale.getDefault()
                     ).format(Date(timestamp))
             }

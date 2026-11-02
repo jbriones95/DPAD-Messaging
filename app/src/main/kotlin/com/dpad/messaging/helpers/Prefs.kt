@@ -54,7 +54,7 @@ class Prefs private constructor(context: Context) {
         const val ACCENT_ORANGE       = "orange"
         const val ACCENT_ROSE         = "rose"
         const val DATE_FORMAT_MDY     = "MDY"   // MM/dd/yy  (American)
-        const val DATE_FORMAT_DMY     = "DMY"   // dd/MM/yy  (European)
+        const val DATE_FORMAT_DMY     = "DMY"   // dd.MM.yy  (European)
         const val TIME_FORMAT_12H     = "12h"   // h:mm a
         const val TIME_FORMAT_24H     = "24h"   // HH:mm
         const val UI_SCALE_COMPACT    = "compact"   // 0.85x
@@ -159,7 +159,7 @@ class Prefs private constructor(context: Context) {
         get() = prefs.getString(KEY_APP_ACCENT, ACCENT_BLUE) ?: ACCENT_BLUE
         set(v) = prefs.edit().putString(KEY_APP_ACCENT, v).apply()
 
-    /** Date display format. [DATE_FORMAT_MDY] = MM/dd/yy; [DATE_FORMAT_DMY] = dd/MM/yy. Default: MDY (American). */
+    /** Date display format. [DATE_FORMAT_MDY] = MM/dd/yy; [DATE_FORMAT_DMY] = dd.MM.yy. Default: MDY (American). */
     var dateFormat: String
         get() = prefs.getString(KEY_DATE_FORMAT, DATE_FORMAT_MDY) ?: DATE_FORMAT_MDY
         set(v) = prefs.edit().putString(KEY_DATE_FORMAT, v).apply()

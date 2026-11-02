@@ -125,7 +125,7 @@
     <string name="date_format">Date Format</string>
     <string name="date_format_summary">Order in which date parts are displayed</string>
     <string name="date_mdy">MM/DD/YY (American)</string>
-    <string name="date_dmy">DD/MM/YY (European)</string>
+    <string name="date_dmy">DD.MM.YY (European)</string>
     <string name="time_format">Time Format</string>
     <string name="time_format_summary">12-hour or 24-hour clock</string>
     <string name="time_12h">12-hour (1:30 PM)</string>

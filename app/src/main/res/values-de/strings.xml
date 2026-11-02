@@ -125,7 +125,7 @@
     <string name="date_format">Datumsformat</string>
     <string name="date_format_summary">Reihenfolge der Datumsbestandteile</string>
     <string name="date_mdy">MM/DD/YY (Amerikanisch)</string>
-    <string name="date_dmy">DD/MM/YY (Europäisch)</string>
+    <string name="date_dmy">DD.MM.YY (Europäisch)</string>
     <string name="time_format">Zeitformat</string>
     <string name="time_format_summary">12- oder 24-Stunden-Anzeige</string>
     <string name="time_12h">12-Stunden (1:30 PM)</string>

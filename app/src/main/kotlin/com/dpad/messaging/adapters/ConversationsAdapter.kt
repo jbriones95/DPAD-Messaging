@@ -48,7 +48,7 @@ class ConversationsAdapter(
         private val timeFormat24h by lazy { SimpleDateFormat("HH:mm", Locale.getDefault()) }
         private val weekdayFormat by lazy { SimpleDateFormat("EEE", Locale.getDefault()) }
         private val shortDateMdy by lazy { SimpleDateFormat("MM/dd/yy", Locale.getDefault()) }
-        private val shortDateDmy by lazy { SimpleDateFormat("dd/MM/yy", Locale.getDefault()) }
+        private val shortDateDmy by lazy { SimpleDateFormat("dd.MM.yy", Locale.getDefault()) }
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ConversationViewHolder {
