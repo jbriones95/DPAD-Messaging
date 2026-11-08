@@ -274,7 +274,7 @@ This list mirrors `app/src/main/res/values/strings.xml`. Keys in `backticks` are
 | `attach_voice_message` | Voice message | — |
 | `attach_contact` | Contact | — |
 | `attach_camera` | Camera | — |
-| `photo_from_gallery` | Photo from gallery | — |
+| `photo_from_gallery` | Photo | — |
 | `choose_photo` | Choose photo | — |
 | `no_photos_found` | No photos found. | — |
 | `browse_files` | Browse files | — |

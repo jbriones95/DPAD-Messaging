@@ -145,7 +145,7 @@
     <string name="attach_voice_message">Voice message</string>
     <string name="attach_contact">Contact</string>
     <string name="attach_camera">Camera</string>
-    <string name="photo_from_gallery">Photo from gallery</string>
+    <string name="photo_from_gallery">Photo</string>
     <string name="choose_photo">Choose photo</string>
     <string name="no_photos_found">No photos found.</string>
     <string name="browse_files">Browse files</string>
