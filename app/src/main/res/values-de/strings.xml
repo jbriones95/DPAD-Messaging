@@ -145,6 +145,11 @@
     <string name="attach_voice_message">Sprachnachricht</string>
     <string name="attach_contact">Kontakt</string>
     <string name="attach_camera">Kamera</string>
+    <string name="photo_from_gallery">Foto aus Galerie</string>
+    <string name="choose_photo">Foto auswählen</string>
+    <string name="no_photos_found">Keine Fotos gefunden.</string>
+    <string name="browse_files">Dateien durchsuchen</string>
+    <string name="photo_picker_permission">Erlauben Sie den Fotozugriff, um Ihre Bilder anzuzeigen.</string>
     <string name="messaging">Nachrichten</string>
     <string name="privacy">Datenschutz</string>
     <string name="storage">Speicher</string>

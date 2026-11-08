@@ -22,6 +22,7 @@
         android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <!-- ─── Notifications ─── -->
@@ -224,6 +225,12 @@
             android:exported="false"
             android:parentActivityName=".activities.MainActivity"
             android:label="@string/recycle_bin" />
+
+        <activity
+            android:name=".activities.PhotoPickerActivity"
+            android:exported="false"
+            android:parentActivityName=".activities.ThreadActivity"
+            android:label="@string/choose_photo" />
 
         <activity
             android:name=".activities.ConversationDetailsActivity"

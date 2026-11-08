@@ -8,15 +8,15 @@ DPAD Messaging is a community project, and translations are welcome. The app shi
 
 | Language | Folder | Status |
 | --- | --- | --- |
-| English | `app/src/main/res/values/` | Source of truth (290 strings) |
-| German | `app/src/main/res/values-de/` | Complete (290/290) |
-| Spanish | `app/src/main/res/values-es/` | Complete (290/290) |
+| English | `app/src/main/res/values/` | Source of truth (295 strings) |
+| German | `app/src/main/res/values-de/` | Complete (295/295) |
+| Spanish | `app/src/main/res/values-es/` | Complete (295/295) |
 
 German and Spanish are complete. More languages are welcome — [open an issue](https://github.com/jbriones95/DPAD-Messaging/issues/new?template=translation.yml) to start one.
 
 ## What needs translating
 
-All user-visible text is in [`app/src/main/res/values/strings.xml`](app/src/main/res/values/strings.xml). The app currently has **290 strings**, no plurals and no string arrays. The [full list](#full-list-of-english-strings) is at the bottom of this document, grouped by screen.
+All user-visible text is in [`app/src/main/res/values/strings.xml`](app/src/main/res/values/strings.xml). The app currently has **295 strings**, no plurals and no string arrays. The [full list](#full-list-of-english-strings) is at the bottom of this document, grouped by screen.
 
 ## How to contribute
 
@@ -254,7 +254,7 @@ This list mirrors `app/src/main/res/values/strings.xml`. Keys in `backticks` are
 | `date_format` | Date Format | — |
 | `date_format_summary` | Order in which date parts are displayed | — |
 | `date_mdy` | MM/DD/YY (American) | — |
-| `date_dmy` | DD/MM/YY (European) | — |
+| `date_dmy` | DD.MM.YY (European) | — |
 | `time_format` | Time Format | — |
 | `time_format_summary` | 12-hour or 24-hour clock | — |
 | `time_12h` | 12-hour (1:30 PM) | — |
@@ -274,6 +274,11 @@ This list mirrors `app/src/main/res/values/strings.xml`. Keys in `backticks` are
 | `attach_voice_message` | Voice message | — |
 | `attach_contact` | Contact | — |
 | `attach_camera` | Camera | — |
+| `photo_from_gallery` | Photo from gallery | — |
+| `choose_photo` | Choose photo | — |
+| `no_photos_found` | No photos found. | — |
+| `browse_files` | Browse files | — |
+| `photo_picker_permission` | Allow photo access to show your pictures. | — |
 | `messaging` | Messaging | — |
 | `privacy` | Privacy | — |
 | `storage` | Storage | — |
@@ -461,7 +466,7 @@ This list mirrors `app/src/main/res/values/strings.xml`. Keys in `backticks` are
 | `update_check_failed` | Update check failed: %1$s | Keep placeholders: `%1$s` |
 | `update_installer_unavailable` | Android could not open the package installer | — |
 
-<!-- 290 strings -->
+<!-- 295 strings -->
 
 ## Keeping this list current
 

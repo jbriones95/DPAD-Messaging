@@ -83,6 +83,7 @@ class ThreadActivity : BaseActivity() {
 
     private enum class PendingPermissionAction {
         ATTACHMENT_PICKER,
+        PHOTO_PICKER,
         SPEECH_INPUT,
         VOICE_RECORDING,
         SAVE_MMS_ATTACHMENTS
@@ -121,6 +122,7 @@ class ThreadActivity : BaseActivity() {
     private var isPreviewAudioPlaying = false
 
     private lateinit var attachmentPickerLauncher: ActivityResultLauncher<Intent>
+    private lateinit var photoPickerLauncher: ActivityResultLauncher<Intent>
     private lateinit var permissionRequestLauncher: ActivityResultLauncher<Array<String>>
     private lateinit var speechInputLauncher: ActivityResultLauncher<Intent>
     private lateinit var contactPickerLauncher: ActivityResultLauncher<Void?>
@@ -154,10 +156,24 @@ class ThreadActivity : BaseActivity() {
         permissionRequestLauncher = registerForActivityResult(
             ActivityResultContracts.RequestMultiplePermissions()
         ) { result ->
+            if (pendingPermissionAction == PendingPermissionAction.PHOTO_PICKER) {
+                if (hasPhotoPermission()) {
+                    startPhotoPicker()
+                } else {
+                    android.widget.Toast.makeText(
+                        this,
+                        R.string.photo_picker_permission,
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                }
+                pendingPermissionAction = null
+                return@registerForActivityResult
+            }
             val granted = result.values.all { it }
             if (granted) {
                 when (pendingPermissionAction) {
                     PendingPermissionAction.ATTACHMENT_PICKER -> launchAttachmentPickerChooser()
+                    PendingPermissionAction.PHOTO_PICKER -> startPhotoPicker()
                     PendingPermissionAction.SPEECH_INPUT -> launchSpeechInput()
                     PendingPermissionAction.VOICE_RECORDING -> toggleVoiceRecording()
                     PendingPermissionAction.SAVE_MMS_ATTACHMENTS -> saveMmsAttachmentsNow(pendingMmsSaveAttachments)
@@ -166,6 +182,7 @@ class ThreadActivity : BaseActivity() {
             } else {
                 val messageRes = when (pendingPermissionAction) {
                     PendingPermissionAction.ATTACHMENT_PICKER -> R.string.attachment_permission_needed
+                    PendingPermissionAction.PHOTO_PICKER -> R.string.photo_picker_permission
                     PendingPermissionAction.SPEECH_INPUT,
                     PendingPermissionAction.VOICE_RECORDING,
                     PendingPermissionAction.SAVE_MMS_ATTACHMENTS,
@@ -208,6 +225,21 @@ class ThreadActivity : BaseActivity() {
                     )
                 } catch (_: Exception) {
                     // Not all providers offer persistable permissions.
+                }
+                setPendingAttachment(uri, append = true)
+            }
+        }
+
+        photoPickerLauncher = registerForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+        ) { result ->
+            val uri = if (result.resultCode == Activity.RESULT_OK) result.data?.data else null
+            if (uri != null) {
+                runCatching {
+                    contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
                 }
                 setPendingAttachment(uri, append = true)
             }
@@ -560,18 +592,22 @@ class ThreadActivity : BaseActivity() {
         // Attach button — show menu to choose between media or contact.
         binding.btnAttach.setOnClickListener { anchor ->
             val popup = PopupMenu(ThemeManager.popupMenuContext(this), anchor)
-            popup.menu.add(0, 1, 0, getString(R.string.attach_image_audio))
-            popup.menu.add(0, 2, 0, getString(R.string.attach_contact))
-            popup.menu.add(0, 3, 0, getString(R.string.attach_camera))
-            popup.menu.add(0, 4, 0, getString(R.string.attach_voice_message))
+            popup.menu.add(0, 1, 0, getString(R.string.photo_from_gallery))
+            popup.menu.add(0, 2, 0, getString(R.string.attach_image_audio))
+            popup.menu.add(0, 3, 0, getString(R.string.attach_contact))
+            popup.menu.add(0, 4, 0, getString(R.string.attach_camera))
+            popup.menu.add(0, 5, 0, getString(R.string.attach_voice_message))
             popup.setOnMenuItemClickListener { item ->
                 when (item.itemId) {
                     1 -> {
+                        launchPhotoPickerWithPermission()
+                    }
+                    2 -> {
                         launchAttachmentPickerWithPermission()
                     }
-                    2 -> contactPickerLauncher.launch(null)
-                    3 -> launchCameraAttachment()
-                    4 -> toggleVoiceRecordingWithPermission()
+                    3 -> contactPickerLauncher.launch(null)
+                    4 -> launchCameraAttachment()
+                    5 -> toggleVoiceRecordingWithPermission()
                 }
                 true
             }
@@ -650,6 +686,57 @@ class ThreadActivity : BaseActivity() {
         binding.tvMessageContext.visibility = View.GONE
     }
 
+    private fun launchPhotoPickerWithPermission() {
+        if (hasPhotoPermission()) {
+            startPhotoPicker()
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                arrayOf(
+                    Manifest.permission.READ_MEDIA_IMAGES,
+                    Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+                )
+            } else {
+                arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
+            }
+            requestPermissionsForAction(PendingPermissionAction.PHOTO_PICKER, permissions)
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            requestPermissionsForAction(
+                PendingPermissionAction.PHOTO_PICKER,
+                arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+            )
+            return
+        }
+        startPhotoPicker()
+    }
+
+    private fun hasPhotoPermission(): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            return true
+        }
+        val permission = when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ->
+                Manifest.permission.READ_MEDIA_IMAGES
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ->
+                Manifest.permission.READ_EXTERNAL_STORAGE
+            else -> return true
+        }
+        return ContextCompat.checkSelfPermission(this, permission) ==
+            PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun startPhotoPicker() {
+        photoPickerLauncher.launch(Intent(this, PhotoPickerActivity::class.java))
+    }
+
     private fun launchAttachmentPickerWithPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             requestPermissionsForAction(
@@ -700,6 +787,7 @@ class ThreadActivity : BaseActivity() {
             pendingPermissionAction = action
             when (action) {
                 PendingPermissionAction.ATTACHMENT_PICKER -> launchAttachmentPickerChooser()
+                PendingPermissionAction.PHOTO_PICKER -> startPhotoPicker()
                 PendingPermissionAction.SPEECH_INPUT -> launchSpeechInput()
                 PendingPermissionAction.VOICE_RECORDING -> toggleVoiceRecording()
                 PendingPermissionAction.SAVE_MMS_ATTACHMENTS -> saveMmsAttachmentsNow(pendingMmsSaveAttachments)
