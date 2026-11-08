@@ -82,7 +82,7 @@ import kotlin.math.min
 class ThreadActivity : BaseActivity() {
 
     private enum class PendingPermissionAction {
-        ATTACHMENT_PICKER,
+        AUDIO_PICKER,
         PHOTO_PICKER,
         SPEECH_INPUT,
         VOICE_RECORDING,
@@ -172,7 +172,7 @@ class ThreadActivity : BaseActivity() {
             val granted = result.values.all { it }
             if (granted) {
                 when (pendingPermissionAction) {
-                    PendingPermissionAction.ATTACHMENT_PICKER -> launchAttachmentPickerChooser()
+                    PendingPermissionAction.AUDIO_PICKER -> launchAudioPicker()
                     PendingPermissionAction.PHOTO_PICKER -> startPhotoPicker()
                     PendingPermissionAction.SPEECH_INPUT -> launchSpeechInput()
                     PendingPermissionAction.VOICE_RECORDING -> toggleVoiceRecording()
@@ -181,7 +181,7 @@ class ThreadActivity : BaseActivity() {
                 }
             } else {
                 val messageRes = when (pendingPermissionAction) {
-                    PendingPermissionAction.ATTACHMENT_PICKER -> R.string.attachment_permission_needed
+                    PendingPermissionAction.AUDIO_PICKER -> R.string.attachment_permission_needed
                     PendingPermissionAction.PHOTO_PICKER -> R.string.photo_picker_permission
                     PendingPermissionAction.SPEECH_INPUT,
                     PendingPermissionAction.VOICE_RECORDING,
@@ -589,11 +589,11 @@ class ThreadActivity : BaseActivity() {
 
         binding.btnSend.setOnClickListener { sendMessage() }
 
-        // Attach button — show menu to choose between media or contact.
+        // Attach button — photo, audio, contact, camera or voice message.
         binding.btnAttach.setOnClickListener { anchor ->
             val popup = PopupMenu(ThemeManager.popupMenuContext(this), anchor)
             popup.menu.add(0, 1, 0, getString(R.string.photo_from_gallery))
-            popup.menu.add(0, 2, 0, getString(R.string.attach_image_audio))
+            popup.menu.add(0, 2, 0, getString(R.string.attach_audio))
             popup.menu.add(0, 3, 0, getString(R.string.attach_contact))
             popup.menu.add(0, 4, 0, getString(R.string.attach_camera))
             popup.menu.add(0, 5, 0, getString(R.string.attach_voice_message))
@@ -603,7 +603,7 @@ class ThreadActivity : BaseActivity() {
                         launchPhotoPickerWithPermission()
                     }
                     2 -> {
-                        launchAttachmentPickerWithPermission()
+                        launchAudioPickerWithPermission()
                     }
                     3 -> contactPickerLauncher.launch(null)
                     4 -> launchCameraAttachment()
@@ -737,22 +737,22 @@ class ThreadActivity : BaseActivity() {
         photoPickerLauncher.launch(Intent(this, PhotoPickerActivity::class.java))
     }
 
-    private fun launchAttachmentPickerWithPermission() {
+    private fun launchAudioPickerWithPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             requestPermissionsForAction(
-                PendingPermissionAction.ATTACHMENT_PICKER,
-                arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_AUDIO)
+                PendingPermissionAction.AUDIO_PICKER,
+                arrayOf(Manifest.permission.READ_MEDIA_AUDIO)
             )
             return
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             requestPermissionsForAction(
-                PendingPermissionAction.ATTACHMENT_PICKER,
+                PendingPermissionAction.AUDIO_PICKER,
                 arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
             )
             return
         }
-        launchAttachmentPickerChooser()
+        launchAudioPicker()
     }
 
     private fun launchSpeechInputWithPermission() {
@@ -786,7 +786,7 @@ class ThreadActivity : BaseActivity() {
             }) {
             pendingPermissionAction = action
             when (action) {
-                PendingPermissionAction.ATTACHMENT_PICKER -> launchAttachmentPickerChooser()
+                PendingPermissionAction.AUDIO_PICKER -> launchAudioPicker()
                 PendingPermissionAction.PHOTO_PICKER -> startPhotoPicker()
                 PendingPermissionAction.SPEECH_INPUT -> launchSpeechInput()
                 PendingPermissionAction.VOICE_RECORDING -> toggleVoiceRecording()
@@ -1084,21 +1084,12 @@ class ThreadActivity : BaseActivity() {
         }
     }
 
-    private fun launchAttachmentPickerChooser() {
-        val mimeTypes = arrayOf("image/*", "audio/*")
-
+    private fun launchAudioPicker() {
         val openDocumentIntent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
-            type = "*/*"
-            putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes)
+            type = "audio/*"
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-        }
-
-        val imageIntent = Intent(Intent.ACTION_GET_CONTENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            type = "image/*"
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
 
         val audioIntent = Intent(Intent.ACTION_GET_CONTENT).apply {
@@ -1111,7 +1102,7 @@ class ThreadActivity : BaseActivity() {
             openDocumentIntent,
             getString(R.string.choose_attachment_app)
         ).apply {
-            putExtra(Intent.EXTRA_INITIAL_INTENTS, arrayOf(imageIntent, audioIntent))
+            putExtra(Intent.EXTRA_INITIAL_INTENTS, arrayOf(audioIntent))
         }
 
         attachmentPickerLauncher.launch(chooser)

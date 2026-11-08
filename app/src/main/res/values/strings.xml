@@ -141,7 +141,7 @@
     <string name="attachment_preview_small">Small</string>
     <string name="attachment_preview_normal">Normal</string>
     <string name="attachment_preview_large">Large</string>
-    <string name="attach_image_audio">Image / Audio</string>
+    <string name="attach_audio">Audio</string>
     <string name="attach_voice_message">Voice message</string>
     <string name="attach_contact">Contact</string>
     <string name="attach_camera">Camera</string>

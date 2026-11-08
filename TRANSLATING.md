@@ -270,7 +270,7 @@ This list mirrors `app/src/main/res/values/strings.xml`. Keys in `backticks` are
 | `attachment_preview_small` | Small | — |
 | `attachment_preview_normal` | Normal | — |
 | `attachment_preview_large` | Large | — |
-| `attach_image_audio` | Image / Audio | — |
+| `attach_audio` | Audio | — |
 | `attach_voice_message` | Voice message | — |
 | `attach_contact` | Contact | — |
 | `attach_camera` | Camera | — |
