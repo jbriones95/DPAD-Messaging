@@ -1,0 +1,3 @@
+Sending a photo now opens a built-in photo grid, so it works even when the phone's file picker shows empty folders. A "Browse files" button is still available as a fallback.
+
+The attach menu now has separate "Photo from gallery" and "Audio" options. Audio opens an audio-only file picker.

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.12
+
+- Sending a photo now opens a built-in photo grid, so it works even when the phone's file picker shows empty folders. A "Browse files" button is available as a fallback.
+- The attach menu now has separate **Photo from gallery** and **Audio** options. Audio opens an audio-only file picker.
+
 ## 0.5.11
 
 - European date format now uses dots, for example 31.12.27 instead of 31/12/27. Choose it under Settings → Date Format.
