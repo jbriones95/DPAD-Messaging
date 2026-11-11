@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.13
+
+- The photo attachment option is now simply called **Photo**. Audio remains a separate menu option.
+
 ## 0.5.12
 
 - Sending a photo now opens a built-in photo grid, so it works even when the phone's file picker shows empty folders. A "Browse files" button is available as a fallback.
