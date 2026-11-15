@@ -39,7 +39,9 @@ class ThreadAdapter(
     private val onMessageLongClick: (Message) -> Unit,
     private val onAttachmentAction: (MmsAttachment) -> Unit = {},
     private val threadNumbers: List<String> = emptyList(),
-    private val onMessageFocused: (Message, Int, Int) -> Unit = { _, _, _ -> }
+    private val onMessageFocused: (Message, Int, Int) -> Unit = { _, _, _ -> },
+    private val onMessageClick: ((Message) -> Unit)? = null,
+    private val messageStateLabel: (Message) -> String? = { null }
 ) : ListAdapter<ThreadItem, RecyclerView.ViewHolder>(DIFF_CALLBACK) {
 
     private var audioPlayer: MediaPlayer? = null
@@ -386,7 +388,8 @@ class ThreadAdapter(
                 androidx.recyclerview.widget.LinearLayoutManager.HORIZONTAL,
                 false
             )
-            rvAttachments.setHasFixedSize(true)
+            // Attachment rows wrap their content, so their size can change.
+            rvAttachments.setHasFixedSize(false)
             rvAttachments.itemAnimator = null
             rvAttachments.setRecycledViewPool(attachmentPool)
         }
@@ -406,6 +409,7 @@ class ThreadAdapter(
         restingColors: List<Int>?,
         positionProvider: () -> Int
     ) {
+        onMessageClick?.let { action -> bubble.setOnClickListener { action(message) } }
         bubble.contentDescription = messageDescription(bubble.context, message)
         val colors = restingColors?.map { bubble.context.getColor(it) }
             ?: textViews.map { it.currentTextColor }
@@ -647,6 +651,7 @@ class ThreadAdapter(
         private val binding: ItemMessageFailedBinding
     ) : RecyclerView.ViewHolder(binding.root) {
         fun bind(message: Message, @Suppress("UNUSED_PARAMETER") position: Int) {
+            binding.tvState.text = messageStateLabel(message) ?: binding.root.context.getString(R.string.message_failed)
             binding.tvBody.text = message.body
             binding.bubbleContainer.isFocusable = !binding.tvBody.isFocusable
             binding.bubbleContainer.isFocusableInTouchMode = !binding.tvBody.isFocusableInTouchMode

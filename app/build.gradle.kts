@@ -22,6 +22,8 @@ android {
         targetSdk = 34
         versionCode = getSecret("EXPERIMENTAL_VERSION_CODE")?.toIntOrNull() ?: 1057000
         versionName = "0.5.7"
+        // Creation and reception use the current typed group API.
+        buildConfigField("boolean", "DUMBER_GROUP_CREATION", providers.gradleProperty("dumberGroupCreation").orElse("true").get())
         buildConfigField("String", "UPDATE_CHANNEL", "\"production\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -68,7 +70,8 @@ android {
             buildConfigField("String", "UPDATE_CHANNEL", "\"production\"")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
+                "proguard-rules.pro",
+                "../vendor/dumber-chat-core/bindings/kotlin/consumer-rules.pro"
             )
         }
         create("experimental") {
@@ -110,8 +113,9 @@ android {
 
     sourceSets {
         getByName("main") {
-            java.srcDirs("src/main/kotlin")
+            java.srcDirs("src/main/kotlin", "../vendor/dumber-chat-core/bindings/kotlin/src/main/kotlin")
         }
+        getByName("test") { java.srcDir("../vendor/dumber-chat-core/bindings/kotlin/src/test/kotlin") }
         getByName("androidTest") {
             assets.srcDir("$projectDir/schemas")
         }

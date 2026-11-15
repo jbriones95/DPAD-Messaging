@@ -2,7 +2,7 @@ package com.dpad.messaging.dumber
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import org.json.JSONArray
+import chat.dumber.sdk.*
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
@@ -22,67 +22,60 @@ class DumberRoundTripTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val root = File(context.cacheDir, "dumber-test-${UUID.randomUUID()}")
         val password = UUID.randomUUID().toString() + UUID.randomUUID().toString()
-        val sessions = mutableMapOf<String, JSONObject>()
-        fun call(peer: String, command: String, fields: JSONObject = JSONObject()): JSONObject {
-            fields.put("service", service).put("command", command)
-                .put("store_path", File(root, peer).absolutePath).put("store_password", password)
-            sessions[peer]?.let { fields.put("session", it) }
-            return DumberCore.call(fields)
-        }
+        val sessions = mutableMapOf<String,Session>()
+        fun client(peer: String): ChatApi = ChatClient(ChatConfig(service,sessions[peer],CryptoStore(File(root,peer).absolutePath,password)))
         fun receive(peer: String, room: String, eventId: String, body: String) {
-            val retries = JSONArray()
             repeat(8) {
-                val result = call(peer, "sync", JSONObject().put("retry_events", retries))
-                val events = result.optJSONObject("rooms")?.optJSONObject("join")?.optJSONObject(room)
-                    ?.optJSONObject("timeline")?.optJSONArray("events") ?: JSONArray()
-                for (i in 0 until events.length()) {
-                    val event = events.getJSONObject(i)
-                    if (event.optString("event_id") != eventId) continue
-                    if (event.optBoolean("e2ee")) {
-                        assertEquals(body, event.getJSONObject("content").getString("body"))
-                        return
-                    }
-                    event.optJSONObject("encrypted_event")?.let { raw ->
-                        retries.put(JSONObject().put("room_id", room).put("event", raw))
-                    }
-                }
+                val event = client(peer).sync().conversations.filter { it.conversation.id == room }.flatMap { it.messages }.firstOrNull { it.eventId == eventId && it.content is MessageContent.Text }
+                if(event != null) { assertTrue(event.encrypted); assertEquals(body,(event.content as MessageContent.Text).body); return }
             }
             fail("Encrypted message was not decrypted by the other device")
         }
         try {
             for ((peer, phone) in listOf("alice" to "+15555550101", "bob" to "+15555550102")) {
-                assertTrue("Only the development SMS service is allowed", call(peer, "request_code", JSONObject().put("phone", phone)).getBoolean("development"))
-                sessions[peer] = call(peer, "verify", JSONObject().put("phone", phone).put("code", "123456"))
-                call(peer, "sync")
+                assertTrue("Only the development SMS service is allowed", client(peer).requestCode(phone).development)
+                sessions[peer] = client(peer).verify(phone,"123456")
+                client(peer).sync()
             }
-            val other = call("alice", "lookup", JSONObject().put("phone", "+15555550102")).getString("user_id")
-            assertEquals(sessions.getValue("bob").getString("user_id"), other)
-            val resolved = call("alice", "resolve", JSONObject().put("user_ids", JSONArray().put(other)))
-            assertEquals("+15555550102", resolved.getJSONObject("phones").getString(other))
-            val room = call("alice", "open_chat", JSONObject().put("user_id", other)).getString("room_id")
-            call("bob", "join", JSONObject().put("room_id", room))
-            call("bob", "sync")
-            call("alice", "sync")
+            val other = client("alice").checkRecipient("+15555550102")
+            assertEquals(Availability.AVAILABLE,other.availability)
+            assertEquals(sessions.getValue("bob").accountId,other.contact!!.id)
+            val room = client("alice").openChat("+15555550102",cachedOnly=true).id
+            client("bob").sync()
+            client("bob").join(room)
+            client("bob").sync()
+            client("alice").sync()
             for ((from, to) in listOf("alice" to "bob", "bob" to "alice")) {
                 val body = "DPAD encrypted integration test ${UUID.randomUUID()}"
-                val sent = call(from, "send", JSONObject().put("room_id", room).put("body", body).put("transaction_id", UUID.randomUUID().toString()))
-                assertTrue(sent.getBoolean("e2ee"))
-                val id = sent.getString("event_id")
-                // Verify the homeserver stores ciphertext, rather than trusting only UI metadata.
-                val session = sessions.getValue(from)
-                val connection = URL(session.getString("homeserver") + "/_matrix/client/v3/rooms/" + room + "/event/" + id).openConnection() as HttpURLConnection
-                connection.connectTimeout = 15000; connection.readTimeout = 15000
-                connection.setRequestProperty("Authorization", "Bearer " + session.getString("access_token"))
-                try {
-                    val raw = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
-                    assertEquals("m.room.encrypted", raw.getString("type"))
-                    assertFalse(raw.getJSONObject("content").has("body"))
-                } finally { connection.disconnect() }
+                val sent = client(from).sendText(room,body,UUID.randomUUID().toString())
+                assertTrue(sent.encrypted)
+                val id = sent.eventId
+                assertCiphertext(sessions.getValue(from),id,body)
                 receive(to, room, id, body)
             }
         } finally {
-            for (peer in sessions.keys) runCatching { call(peer, "logout") }
+            for (peer in sessions.keys) runCatching { client(peer).logout() }
             root.deleteRecursively()
         }
+    }
+    /** Test-only transport inspection, deliberately outside application code. */
+    private fun assertCiphertext(session: Session, event: String, body: String) {
+        val credentials=JSONObject(session.credentials)
+        fun get(path: String): JSONObject? {
+            val connection=URL(credentials.getString("homeserver")+path).openConnection() as HttpURLConnection
+            connection.connectTimeout=15000; connection.readTimeout=15000
+            connection.setRequestProperty("Authorization","Bearer "+credentials.getString("access_token"))
+            return try { if(connection.responseCode == 200) JSONObject(connection.inputStream.bufferedReader().use { it.readText() }) else null }
+                finally { connection.disconnect() }
+        }
+        val rooms=get("/_matrix/client/v3/joined_rooms")!!.getJSONArray("joined_rooms")
+        for(i in 0 until rooms.length()) {
+            val room=java.net.URLEncoder.encode(rooms.getString(i),"UTF-8")
+            val id=java.net.URLEncoder.encode(event,"UTF-8")
+            val raw=get("/_matrix/client/v3/rooms/$room/event/$id") ?: continue
+            assertEquals("m.room.encrypted",raw.getString("type"))
+            assertFalse(raw.toString().contains(body)); return
+        }
+        fail("Accepted event not found on the server")
     }
 }

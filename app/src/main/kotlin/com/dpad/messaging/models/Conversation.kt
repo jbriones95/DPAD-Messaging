@@ -54,4 +54,8 @@ data class Conversation(
     /** Comma-separated phone numbers for group conversations */
     @ColumnInfo(name = "participants")
     val participants: String = ""
-)
+) {
+    @androidx.room.Ignore
+    var group: com.dpad.messaging.dumber.GroupReference? = null
+    val referenceKey: String get() = group?.let { "group:${it.key}" } ?: "carrier:$threadId"
+}

@@ -50,10 +50,34 @@ pub enum Membership {
     Joined,
     Invited,
     Left,
+    Banned,
+    Requested,
+    Unknown,
+}
+
+impl Membership {
+    pub(crate) fn from_transport(value: &str) -> Self {
+        match value {
+            "join" => Self::Joined,
+            "invite" => Self::Invited,
+            "leave" => Self::Left,
+            "ban" => Self::Banned,
+            "knock" => Self::Requested,
+            _ => Self::Unknown,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Conversation {
+    #[serde(default)]
+    pub kind: crate::ConversationKind,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub members: Vec<crate::GroupMember>,
+    #[serde(default)]
+    pub capabilities: crate::GroupCapabilities,
     pub id: ConversationId,
     /// Other active participants, excluding the current account.
     pub participants: Vec<Contact>,
@@ -78,6 +102,8 @@ pub struct Message {
     pub timestamp_ms: u64,
     pub content: MessageContent,
     pub encrypted: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transaction_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -92,6 +118,8 @@ pub struct ConversationUpdate {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SyncUpdate {
     pub conversations: Vec<ConversationUpdate>,
+    #[serde(default)]
+    pub calls: Vec<crate::CallEvent>,
     /// Directory availability does not prevent message delivery. Unknown phones
     /// are retried on subsequent syncs.
     pub contacts_pending: bool,
@@ -100,7 +128,7 @@ pub struct SyncUpdate {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SentMessage {
     pub event_id: String,
-    #[serde(rename = "e2ee")]
+    #[serde(alias = "e2ee")]
     pub encrypted: bool,
 }
 
@@ -136,11 +164,23 @@ pub struct KeyImport {
 
 #[derive(Default, Serialize, Deserialize)]
 pub(crate) struct AddressBook {
-    phones: BTreeMap<String, String>, // Matrix user ID -> phone
     #[serde(default)]
-    by_phone: BTreeMap<String, String>, // Phone -> pinned Matrix identity
+    pub(crate) call_inbox: BTreeMap<String, crate::CallEvent>,
+    #[serde(default)]
+    pub(crate) call_seen: BTreeMap<String, u64>,
+    pub(crate) phones: BTreeMap<String, String>, // Matrix user ID -> phone
+    #[serde(default)]
+    pub(crate) by_phone: BTreeMap<String, String>, // Phone -> pinned Matrix identity
     conversations: BTreeMap<ConversationId, StoredConversation>,
     retries: BTreeMap<String, Value>,
+    #[serde(default)]
+    pub(crate) room_metadata: BTreeMap<String, crate::groups::RoomMetadata>,
+    #[serde(default)]
+    pub(crate) creations: BTreeMap<String, Value>,
+    #[serde(default)]
+    pub(crate) availability: BTreeMap<String, crate::availability::Entry>,
+    #[serde(default)]
+    pub(crate) lookup_retry_at: u64,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -150,47 +190,72 @@ struct StoredConversation {
     membership: Membership,
 }
 
-fn opaque(kind: &str, value: &str) -> String {
+pub(crate) fn opaque(kind: &str, value: &str) -> String {
     format!("{kind}_{:x}", Sha256::digest(value.as_bytes()))
 }
 
 pub(crate) fn phone(value: &str) -> Result<&str> {
     let digits = value
         .strip_prefix('+')
-        .context("Use an E.164 phone number, e.g. +15555550101")?;
+        .ok_or_else(|| crate::Failure::invalid("Use an E.164 phone number, e.g. +15555550101"))?;
     if !(2..=15).contains(&digits.len())
         || digits.starts_with('0')
         || !digits.bytes().all(|b| b.is_ascii_digit())
     {
-        bail!("Use an E.164 phone number, e.g. +15555550101");
+        return Err(crate::Failure::invalid(
+            "Use an E.164 phone number, e.g. +15555550101",
+        ));
     }
     Ok(value)
 }
 
 impl AddressBook {
-    fn remember_phone(&mut self, user: &str, number: &str) {
+    pub(crate) fn remember_phone(&mut self, user: &str, number: &str) {
+        self.availability
+            .entry(number.into())
+            .or_insert_with(|| crate::availability::Entry {
+                state: crate::Availability::Available,
+                ..Default::default()
+            });
         self.phones.insert(user.to_owned(), number.to_owned());
         self.by_phone
             .entry(number.to_owned())
             .or_insert_with(|| user.to_owned());
     }
 
-    fn remember_session(&mut self, session: &Session) {
+    pub(crate) fn remember_session(&mut self, session: &Session) {
         if let Some(number) = session.phone() {
             self.remember_phone(&session.user_id, number);
         }
     }
 
-    fn contact(&self, user: &str) -> Contact {
+    pub(crate) fn contact(&self, user: &str) -> Contact {
         Contact {
             id: ContactId(opaque("contact", user)),
             phone: self.phones.get(user).cloned(),
         }
     }
 
-    fn conversation(&self, id: &ConversationId, own_user: &str) -> Conversation {
+    pub(crate) fn conversation(&self, id: &ConversationId, own_user: &str) -> Conversation {
         let stored = &self.conversations[id];
+        let metadata = self
+            .room_metadata
+            .get(&stored.room)
+            .cloned()
+            .unwrap_or_default();
         Conversation {
+            kind: metadata.kind(),
+            name: metadata.name.clone(),
+            members: metadata
+                .members
+                .iter()
+                .map(|(user, membership)| crate::GroupMember {
+                    contact: self.contact(user),
+                    membership: Membership::from_transport(membership),
+                    admin: metadata.is_admin(user),
+                })
+                .collect(),
+            capabilities: metadata.capabilities(own_user),
             id: id.clone(),
             membership: stored.membership,
             participants: stored
@@ -204,7 +269,7 @@ impl AddressBook {
         }
     }
 
-    fn room(&self, id: &ConversationId) -> Result<&str> {
+    pub(crate) fn room(&self, id: &ConversationId) -> Result<&str> {
         Ok(&self
             .conversations
             .get(id)
@@ -212,7 +277,7 @@ impl AddressBook {
             .room)
     }
 
-    fn remember_room(&mut self, room: &str, membership: Membership) -> ConversationId {
+    pub(crate) fn remember_room(&mut self, room: &str, membership: Membership) -> ConversationId {
         let id = ConversationId(opaque("conversation", room));
         self.conversations
             .entry(id.clone())
@@ -225,8 +290,13 @@ impl AddressBook {
         id
     }
 
-    fn message(&mut self, room: &str, event: &Value) -> Option<Message> {
+    pub(crate) fn message(&mut self, room: &str, event: &Value) -> Option<Message> {
         if event["type"] != "m.room.message" {
+            if event["e2ee"] == true {
+                if let Some(id) = event["event_id"].as_str() {
+                    self.retries.remove(id);
+                }
+            }
             return None;
         }
         let event_id = event["event_id"].as_str()?.to_owned();
@@ -255,6 +325,9 @@ impl AddressBook {
             timestamp_ms: event["origin_server_ts"].as_u64().unwrap_or(0),
             content,
             encrypted: unavailable || event["e2ee"] == true,
+            transaction_id: event["unsigned"]["transaction_id"]
+                .as_str()
+                .map(str::to_owned),
         })
     }
 }
@@ -269,14 +342,36 @@ impl Client {
     /// Resolve once and persist the room and account mapping in encrypted storage.
     /// Reopening a known, active direct conversation does not call the directory.
     pub fn open_chat(&self, session: &Session, number: &str) -> Result<Conversation> {
+        self.open_chat_impl(session, number, false)
+    }
+
+    /// Open a conversation using a previously checked recipient; never discover during send.
+    pub fn open_chat_cached(&self, session: &Session, number: &str) -> Result<Conversation> {
+        self.open_chat_impl(session, number, true)
+    }
+
+    fn open_chat_impl(
+        &self,
+        session: &Session,
+        number: &str,
+        cached_only: bool,
+    ) -> Result<Conversation> {
         let number = phone(number)?;
         let crypto = self.encrypted(session)?;
         let _guard = crypto.address_lock.lock().unwrap();
         let mut book = crypto.load_addresses()?;
         book.remember_session(session);
+        if cached_only {
+            let status = book.availability.get(number).map(|e| e.state);
+            anyhow::ensure!(
+                status == Some(crate::Availability::Available),
+                "Check recipient availability before sending"
+            );
+        }
         let user = match book.by_phone.get(number) {
             Some(user) => user.clone(),
             None => {
+                anyhow::ensure!(!cached_only, "Check recipient availability before sending");
                 let user = self.lookup_raw(session, number)?;
                 book.remember_phone(&user, number);
                 // Preserve a successful lookup even if opening the room fails.
@@ -295,6 +390,10 @@ impl Client {
                 .map(|(u, _)| u.as_str())
                 .collect();
             c.membership != Membership::Left
+                && book
+                    .room_metadata
+                    .get(&c.room)
+                    .is_none_or(|m| m.kind() != crate::ConversationKind::Group)
                 && active.len() == 2
                 && active.contains(&user.as_str())
                 && active.contains(&session.user_id.as_str())
@@ -309,6 +408,125 @@ impl Client {
         ]);
         crypto.save_addresses(&book)?;
         Ok(book.conversation(&id, &session.user_id))
+    }
+
+    /// Creates an encrypted group. Pass an empty phone list to start with only
+    /// the creator, then add participants with `invite_member`.
+    pub fn create_group(
+        &self,
+        session: &Session,
+        name: &str,
+        phones: &[String],
+        operation_id: &str,
+    ) -> Result<Conversation> {
+        let result = self.create_group_raw(session, name, phones, operation_id)?;
+        self.group_conversation(session, result["room_id"].as_str().context("Missing room")?)
+    }
+
+    fn group_conversation(&self, session: &Session, room: &str) -> Result<Conversation> {
+        let crypto = self.encrypted(session)?;
+        let _guard = crypto.address_lock.lock().unwrap();
+        let mut book = crypto.load_addresses()?;
+        let metadata = book
+            .room_metadata
+            .get(room)
+            .cloned()
+            .context("Unknown room")?;
+        let membership = match metadata.membership.as_str() {
+            "join" => Membership::Joined,
+            "invite" => Membership::Invited,
+            _ => Membership::Left,
+        };
+        let id = book.remember_room(room, membership);
+        book.conversations.get_mut(&id).unwrap().members = metadata.members;
+        crypto.save_addresses(&book)?;
+        Ok(book.conversation(&id, &session.user_id))
+    }
+
+    fn conversation_room(&self, session: &Session, id: &ConversationId) -> Result<String> {
+        let crypto = self.encrypted(session)?;
+        let _guard = crypto.address_lock.lock().unwrap();
+        Ok(crypto.load_addresses()?.room(id)?.to_owned())
+    }
+
+    pub fn conversation_info(
+        &self,
+        session: &Session,
+        id: &ConversationId,
+    ) -> Result<Conversation> {
+        let room = self.conversation_room(session, id)?;
+        self.room_info_raw(session, &room, true)?;
+        self.group_conversation(session, &room)
+    }
+
+    pub fn invite_member(
+        &self,
+        session: &Session,
+        id: &ConversationId,
+        number: &str,
+    ) -> Result<()> {
+        self.group_invite_raw(session, &self.conversation_room(session, id)?, number)?;
+        Ok(())
+    }
+
+    pub fn rename_group(&self, session: &Session, id: &ConversationId, name: &str) -> Result<()> {
+        self.group_action_raw(
+            session,
+            &self.conversation_room(session, id)?,
+            "group_rename",
+            name,
+        )?;
+        Ok(())
+    }
+
+    pub fn leave(&self, session: &Session, id: &ConversationId) -> Result<()> {
+        let room = self.conversation_room(session, id)?;
+        self.group_action_raw(session, &room, "leave", "")?;
+        self.group_conversation(session, &room)?;
+        Ok(())
+    }
+
+    fn member_action(
+        &self,
+        session: &Session,
+        id: &ConversationId,
+        contact: &ContactId,
+        action: &str,
+    ) -> Result<()> {
+        let room = self.conversation_room(session, id)?;
+        let user = {
+            let crypto = self.encrypted(session)?;
+            let _guard = crypto.address_lock.lock().unwrap();
+            let book = crypto.load_addresses()?;
+            book.room_metadata
+                .get(&room)
+                .context("Unknown room")?
+                .members
+                .keys()
+                .find(|user| book.contact(user).id == *contact)
+                .cloned()
+                .context("Unknown member")?
+        };
+        self.group_action_raw(session, &room, action, &user)?;
+        Ok(())
+    }
+
+    pub fn remove_member(
+        &self,
+        session: &Session,
+        id: &ConversationId,
+        member: &ContactId,
+    ) -> Result<()> {
+        self.member_action(session, id, member, "group_remove")
+    }
+
+    pub fn grant_admin(
+        &self,
+        session: &Session,
+        id: &ConversationId,
+        member: &ContactId,
+    ) -> Result<()> {
+        self.member_action(session, id, member, "group_admin")
     }
 
     pub fn join(&self, session: &Session, conversation: &ConversationId) -> Result<()> {
@@ -337,12 +555,31 @@ impl Client {
             let _guard = crypto.address_lock.lock().unwrap();
             crypto.load_addresses()?.room(conversation)?.to_owned()
         };
-        Ok(serde_json::from_value(self.send_text_raw(
-            session,
-            &room,
-            body,
-            transaction_id,
-        )?)?)
+        let result = self.send_text_raw(session, &room, body, transaction_id);
+        if result
+            .as_ref()
+            .err()
+            .is_some_and(|e| e.is::<crate::RecipientUnavailable>())
+        {
+            let _guard = crypto.address_lock.lock().unwrap();
+            let mut book = crypto.load_addresses()?;
+            let numbers: Vec<_> = book
+                .conversations
+                .get(conversation)
+                .into_iter()
+                .flat_map(|c| c.members.keys())
+                .filter(|u| *u != &session.user_id)
+                .filter_map(|u| book.phones.get(u).cloned())
+                .collect();
+            for number in numbers {
+                let entry = book.availability.entry(number).or_default();
+                entry.state = crate::Availability::Unavailable;
+                entry.checked_at = crate::availability::now();
+                entry.revision += 1;
+            }
+            crypto.save_addresses(&book)?;
+        }
+        Ok(serde_json::from_value(result?)?)
     }
 
     fn resolve_contacts(
@@ -394,6 +631,8 @@ impl Client {
             let _guard = crypto.address_lock.lock().unwrap();
             let mut book = crypto.load_addresses()?;
             book.remember_session(session);
+            crate::groups::absorb(&mut book, &raw);
+            crate::groups::hydrate(&mut book, &crypto)?;
             let mut batches = Vec::new();
             let mut users = Vec::new();
             for (key, membership) in [
@@ -405,6 +644,9 @@ impl Client {
                     for (room, update) in rooms {
                         let id = book.remember_room(room, membership);
                         let stored = book.conversations.get_mut(&id).unwrap();
+                        if let Some(metadata) = book.room_metadata.get(room) {
+                            stored.members.extend(metadata.members.clone());
+                        }
                         for part in ["state", "invite_state", "timeline"] {
                             if let Some(events) = update[part]["events"].as_array() {
                                 for event in events {
@@ -449,6 +691,13 @@ impl Client {
             let conversations = batches
                 .into_iter()
                 .map(|(id, room, update)| {
+                    for event in update["timeline"]["events"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                    {
+                        crate::calls::receive(&mut book, &id, session, event);
+                    }
                     let messages = update["timeline"]["events"]
                         .as_array()
                         .into_iter()
@@ -462,9 +711,33 @@ impl Client {
                     }
                 })
                 .collect();
+            let now = crate::availability::now();
+            book.call_inbox.retain(|_, e| e.expires_at_ms > now);
+            book.call_seen.retain(|_, expiry| *expiry > now);
+            // A directory lookup may recover after the original signaling sync.
+            // Keep pending invitations useful until their bounded lifetime expires.
+            let resolved: Vec<_> = book
+                .call_inbox
+                .iter()
+                .map(|(id, event)| {
+                    let sender = book
+                        .conversation(&event.conversation_id, &session.user_id)
+                        .participants
+                        .into_iter()
+                        .find(|c| c.id == event.sender.id);
+                    (id.clone(), sender)
+                })
+                .collect();
+            for (id, sender) in resolved {
+                if let Some(sender) = sender {
+                    book.call_inbox.get_mut(&id).unwrap().sender = sender;
+                }
+            }
+            let calls = book.call_inbox.values().cloned().collect();
             crypto.save_addresses(&book)?;
             Ok(SyncUpdate {
                 conversations,
+                calls,
                 contacts_pending,
             })
         })();
@@ -507,11 +780,18 @@ impl Client {
             session.user_id.clone()
         };
         let raw = crypto.devices(&user)?;
+        let mut devices: Vec<Device> = serde_json::from_value(raw["devices"].clone())?;
+        for device in &mut devices {
+            device.device_id = opaque("device", &format!("{}\0{}", user, device.device_id));
+        }
         Ok(DeviceList {
             contact: book.contact(&user),
-            current_device_id: session.device_id.clone(),
+            current_device_id: opaque(
+                "device",
+                &format!("{}\0{}", session.user_id, session.device_id),
+            ),
             current_device_fingerprint: raw["fingerprint"].as_str().map(str::to_owned),
-            devices: serde_json::from_value(raw["devices"].clone())?,
+            devices,
         })
     }
 
@@ -564,6 +844,43 @@ mod tests {
             ("@bob:example.org".into(), "join".into()),
         ]);
         (session, book, id)
+    }
+
+    #[test]
+    fn call_inbox_rejects_plaintext_replay_wrong_sender_and_expiry() {
+        let (session, mut book, id) = fixture();
+        let now = crate::availability::now();
+        book.room_metadata.insert("!room:example.org".into(), serde_json::from_value(json!({
+            "membership":"join", "members":{"@alice:example.org":"join","@bob:example.org":"join"},
+            "name":null, "create":{"creator":"@alice:example.org"}, "power":{}, "group":false
+        })).unwrap());
+        let mut e = json!({"type":"m.call.hangup","event_id":"$call","sender":"@bob:example.org",
+            "e2ee":false,"content":{"version":"1","call_id":"test","party_id":"B","chat.dumber.sent_at_ms":now,"reason":"user_hangup"}});
+        crate::calls::receive(&mut book, &id, &session, &e);
+        assert!(book.call_inbox.is_empty());
+        e["e2ee"] = json!(true);
+        e["sender"] = json!("@mallory:example.org");
+        crate::calls::receive(&mut book, &id, &session, &e);
+        assert!(book.call_inbox.is_empty());
+        e["sender"] = json!("@bob:example.org");
+        crate::calls::receive(&mut book, &id, &session, &e);
+        crate::calls::receive(&mut book, &id, &session, &e);
+        assert_eq!(book.call_inbox.len(), 1);
+        let mut restored: AddressBook =
+            serde_json::from_slice(&serde_json::to_vec(&book).unwrap()).unwrap();
+        assert_eq!(
+            restored.call_inbox["$call"].sender.phone.as_deref(),
+            Some("+15555550102")
+        );
+        restored.call_inbox.clear();
+        restored.call_seen.insert("$call".into(), now + 60000);
+        crate::calls::receive(&mut restored, &id, &session, &e);
+        assert!(restored.call_inbox.is_empty());
+        e["event_id"] = json!("$expired");
+        e["content"]["chat.dumber.sent_at_ms"] = json!(now - 60001);
+        crate::calls::receive(&mut restored, &id, &session, &e);
+        assert!(restored.call_inbox.is_empty());
+        assert!(restored.message("!room:example.org", &e).is_none());
     }
 
     #[test]

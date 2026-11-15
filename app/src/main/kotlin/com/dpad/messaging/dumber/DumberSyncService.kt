@@ -1,5 +1,7 @@
 package com.dpad.messaging.dumber
 
+import chat.dumber.sdk.*
+
 import android.app.*
 import android.content.Context
 import android.content.Intent
@@ -37,17 +39,17 @@ class DumberSyncService: Service() {
                     for (account in accounts) if (receivers[account]?.isActive != true) receivers[account] = launch {
                         var nextStatusCheck = 0L
                         while (isActive && DumberAccount.enabled(this@DumberSyncService, account)) {
-                            val sessionToken = DumberAccount.state(this@DumberSyncService, account).optJSONObject("session")?.optString("access_token").orEmpty()
+                            val sessionToken = DumberAccount.session(this@DumberSyncService, account)?.credentials.orEmpty()
                             try {
                                 if (System.currentTimeMillis() >= nextStatusCheck) {
-                                    DumberCore.call(DumberCore.request(this@DumberSyncService, "session_status", account))
+                                    DumberCore.client(this@DumberSyncService, account).sessionStatus()
                                     nextStatusCheck = System.currentTimeMillis() + 60_000
                                 }
                                 DumberMessages.sync(this@DumberSyncService, account); delay(300)
                             }
                             catch(e: CancellationException) { throw e }
-                            catch(e: DumberException) {
-                                if (e.httpStatus == 401) DumberAccount.revoked(this@DumberSyncService, account, sessionToken)
+                            catch(e: ChatException) {
+                                if (e.kind == ErrorKind.AUTHENTICATION_REQUIRED) DumberAccount.revoked(this@DumberSyncService, account, sessionToken)
                                 else { nextStatusCheck = 0L; delay(10_000) }
                             }
                             catch(_: Exception) { nextStatusCheck = 0L; delay(10_000) }

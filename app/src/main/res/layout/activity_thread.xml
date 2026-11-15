@@ -97,6 +97,15 @@
 
     </LinearLayout>
 
+    <LinearLayout android:id="@+id/group_invitation"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:visibility="gone">
+        <Button android:id="@+id/group_accept" android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:text="@string/dumber_group_join" />
+        <Button android:id="@+id/group_decline" android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:text="@string/dumber_group_decline" />
+    </LinearLayout>
+
     <!-- ─── Message List ─────────────────────────────────────────────────── -->
     <com.dpad.messaging.views.DpadRecyclerView
         android:id="@+id/rv_messages"

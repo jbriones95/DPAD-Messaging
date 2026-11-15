@@ -32,9 +32,17 @@ use std::{
     time::Duration,
 };
 mod api;
+mod availability;
+mod bridge;
+pub use availability::{Availability, RecipientStatus};
+pub use bridge::{invoke, ErrorKind, Failure, SessionInfo, API_VERSION};
+mod calls;
 mod catchup;
+pub use calls::*;
 mod encryption;
+mod groups;
 pub use api::*;
+pub use groups::{ConversationKind, GroupCapabilities, GroupMember};
 
 /// The server rejected this message because the recipient has no registered devices.
 /// This does not confirm the outcome of an earlier, ambiguous send attempt.
@@ -46,10 +54,10 @@ impl std::fmt::Display for RecipientUnavailable {
     }
 }
 impl std::error::Error for RecipientUnavailable {}
-pub const RECIPIENT_UNAVAILABLE: &str = "DUMBER_RECIPIENT_UNAVAILABLE";
+pub(crate) const RECIPIENT_UNAVAILABLE: &str = "DUMBER_RECIPIENT_UNAVAILABLE";
 
 #[derive(Debug)]
-pub struct HttpFailure {
+pub(crate) struct HttpFailure {
     pub status: u16,
     pub detail: Value,
     pub retry_after_seconds: Option<u64>,
@@ -62,24 +70,6 @@ impl std::fmt::Display for HttpFailure {
     }
 }
 impl std::error::Error for HttpFailure {}
-
-fn error_response(error: &anyhow::Error) -> Value {
-    let mut response = json!({"ok":false,"error":error.to_string()});
-    if let Some(http) = error.downcast_ref::<HttpFailure>() {
-        response["http_status"] = json!(http.status);
-        if let Some(code) = &http.error_code {
-            response["errcode"] = json!(code);
-        }
-        if let Some(seconds) = http.retry_after_seconds {
-            response["retry_after_seconds"] = json!(seconds);
-        }
-    }
-    if error.is::<RecipientUnavailable>() {
-        response["http_status"] = json!(403);
-        response["errcode"] = json!(RECIPIENT_UNAVAILABLE);
-    }
-    response
-}
 
 /// Opaque login credentials. Serialize for secure storage; never log the result.
 /// Deserialize a previously saved session to restore it.
@@ -262,6 +252,11 @@ impl Client {
                 let Some(events) = state.as_array() else {
                     continue;
                 };
+                if events.iter().any(|e| {
+                    e["type"] == "m.room.create" && e["content"]["type"] == groups::GROUP_TYPE
+                }) {
+                    continue;
+                }
                 let mut members = std::collections::BTreeMap::new();
 
                 for event in events {
@@ -364,74 +359,6 @@ impl Client {
     }
 }
 
-/// Legacy Matrix-shaped JSON interface retained for the existing Android app.
-/// New Rust integrations should use the typed, phone-oriented methods on Client.
-pub fn invoke(input: &str) -> String {
-    fn run(input: &str) -> Result<Value> {
-        let args: Value = serde_json::from_str(input)?;
-        let string = |key: &str| -> Result<&str> {
-            args[key].as_str().with_context(|| format!("Missing {key}"))
-        };
-        let mut client = Client::new(string("service")?)?;
-        if let (Some(path), Some(password)) =
-            (args["store_path"].as_str(), args["store_password"].as_str())
-        {
-            client = client.with_crypto_store(path, password);
-        }
-        match string("command")? {
-            "request_code" => return client.request_code_raw(string("phone")?),
-            "verify" => {
-                return Ok(serde_json::to_value(
-                    client.verify(string("phone")?, string("code")?)?,
-                )?)
-            }
-            _ => {}
-        }
-        let session: Session = serde_json::from_value(args["session"].clone())?;
-        match string("command")? {
-            "lookup" => Ok(json!({"user_id":client.lookup_raw(&session, string("phone")?)?})),
-            "open_chat" => {
-                Ok(json!({"room_id":client.open_chat_raw(&session, string("user_id")?)?}))
-            }
-            "join" => client.join_raw(&session, string("room_id")?),
-            "send" => client.send_text_raw(
-                &session,
-                string("room_id")?,
-                string("body")?,
-                string("transaction_id")?,
-            ),
-            "resolve" => client.resolve_raw(
-                &session,
-                &serde_json::from_value::<Vec<String>>(args["user_ids"].clone())?,
-            ),
-            "sync" => client.encrypted(&session)?.sync(args.get("retry_events")),
-            "devices" => client
-                .encrypted(&session)?
-                .devices(args["user_id"].as_str().unwrap_or(&session.user_id)),
-            "export_keys" => client
-                .encrypted(&session)?
-                .export_keys(string("path")?.into(), string("passphrase")?),
-            "import_keys" => client
-                .encrypted(&session)?
-                .import_keys(string("path")?.into(), string("passphrase")?),
-            "history" => bail!("Server history is not available; read messages from local storage"),
-            "session_status" => Ok(serde_json::to_value(client.session_status(&session)?)?),
-            "pairing_review" => Ok(serde_json::to_value(
-                client.review_pairing(&session, string("code")?)?,
-            )?),
-            "pairing_approve" => Ok(serde_json::to_value(
-                client.approve_pairing(&session, string("code")?)?,
-            )?),
-            "logout" => client.logout_raw(&session),
-            _ => bail!("Unknown command"),
-        }
-    }
-    match run(input) {
-        Ok(data) => json!({"ok":true,"data":data}).to_string(),
-        Err(error) => error_response(&error).to_string(),
-    }
-}
-
 #[cfg(target_os = "android")]
 mod android {
     use jni::{
@@ -440,7 +367,7 @@ mod android {
         JNIEnv,
     };
     #[no_mangle]
-    pub extern "system" fn Java_chat_dumber_app_NativeCore_invoke(
+    pub extern "system" fn Java_chat_dumber_sdk_NativeBridge_invoke(
         mut env: JNIEnv,
         _: JClass,
         input: JString,
@@ -463,22 +390,20 @@ mod android {
 mod tests {
     use super::*;
     #[test]
-    fn structured_http_failure_preserves_legacy_error_text() {
+    fn structured_errors_do_not_expose_transport_details() {
         let error: anyhow::Error = HttpFailure {
             status: 429,
-            detail: json!("Daily phone lookup limit reached"),
+            detail: json!("private detail"),
             retry_after_seconds: Some(123),
             error_code: None,
         }
         .into();
-        let response = error_response(&error);
-        assert_eq!(response["http_status"], 429);
-        assert_eq!(response["retry_after_seconds"], 123);
-        assert!(response["error"].as_str().unwrap().starts_with("429:"));
-        assert_eq!(response["ok"], false);
-        let generic = error_response(&anyhow::anyhow!("offline"));
-        assert_eq!(generic["error"], "offline");
-        assert!(generic.get("http_status").is_none());
+        let failure = Failure::from_error(&error);
+        assert_eq!(failure.kind, ErrorKind::RateLimited);
+        assert_eq!(failure.retry_after_seconds, Some(123));
+        assert!(!serde_json::to_string(&failure)
+            .unwrap()
+            .contains("private detail"));
     }
     #[test]
     fn rejects_nonlocal_cleartext() {
@@ -505,10 +430,7 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(response["ok"], false);
-        assert_eq!(
-            response["error"],
-            "Server history is not available; read messages from local storage"
-        );
+        assert_eq!(response["error_kind"], "invalid_input");
         assert!(response.get("http_status").is_none());
     }
     #[test]
@@ -535,13 +457,12 @@ mod tests {
     }
 
     #[test]
-    fn legacy_sessions_remain_readable_and_credentials_round_trip() {
-        let legacy = json!({"homeserver":"https://example.org","user_id":"@alice:example.org",
-            "access_token":"secret","device_id":"TEST"});
-        let mut session: Session = serde_json::from_value(legacy.clone()).unwrap();
-        assert_eq!(session.phone(), None);
-        assert_eq!(serde_json::to_value(&session).unwrap(), legacy);
-        session.phone = Some("+15555550101".into());
+    fn session_credentials_round_trip() {
+        let session: Session = serde_json::from_value(json!({
+            "homeserver":"https://example.org", "user_id":"@alice:example.org",
+            "access_token":"secret", "device_id":"TEST", "phone":"+15555550101"
+        }))
+        .unwrap();
         let restored: Session =
             serde_json::from_slice(&serde_json::to_vec(&session).unwrap()).unwrap();
         assert_eq!(restored.phone(), Some("+15555550101"));
@@ -630,7 +551,7 @@ mod tests {
                 .unwrap()
                 .approved
         );
-        let response: Value = serde_json::from_str(&invoke(&json!({"command":"pairing_approve","service":base,"session":session,"code":"12345678"}).to_string())).unwrap();
+        let response: Value = serde_json::from_str(&invoke(&json!({"api_version":2,"service":base,"session":session.info().unwrap(),"operation":{"command":"pairing_approve","code":"12345678"}}).to_string())).unwrap();
         assert_eq!(response["data"]["approved"], true);
         client.logout(&session).unwrap();
         server.join().unwrap();
@@ -643,8 +564,8 @@ mod tests {
             retry_after_seconds: None,
             error_code: Some("M_UNKNOWN_TOKEN".into()),
         };
-        let response = error_response(&failure.into());
-        assert_eq!(response["errcode"], "M_UNKNOWN_TOKEN");
+        let response = Failure::from_error(&failure.into());
+        assert_eq!(response.kind, ErrorKind::AuthenticationRequired);
         let session:Session=serde_json::from_value(json!({"homeserver":"http://127.0.0.1:9","user_id":"@test:example.org","device_id":"main","access_token":"secret"})).unwrap();
         assert!(Client::new("http://127.0.0.1:9")
             .unwrap()

@@ -1,5 +1,7 @@
 package com.dpad.messaging.dumber
 
+import chat.dumber.sdk.*
+
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import androidx.test.core.app.ApplicationProvider
@@ -60,7 +62,23 @@ class DumberStateTest {
     private val ownPhone = "+15555550100"
     private val phone = "+15555550101"
     private val peer = "@peer:example.test"
+    private val recipients = mutableMapOf<String,String?>()
+    private fun remember(context: Context, account: String, number: String, peer: String?, authoritative: Boolean = false) {
+        recipients["$account/$number"]=peer
+    }
+    private fun session(account: String = self, credentials: String = "test", device: String = "test-device") = Session(credentials,account,device,null)
+    private fun unusedApi(): ChatApi = java.lang.reflect.Proxy.newProxyInstance(ChatApi::class.java.classLoader, arrayOf(ChatApi::class.java)) { _, method, _ -> error("Unexpected API call: ${method.name}") } as ChatApi
+    @org.junit.After fun resetTransport() { DumberCore.factory = { ChatClient(it) } }
     @Before fun setup() {
+        recipients.clear()
+        DumberCore.factory = { config -> object : ChatApi by unusedApi() {
+            override fun recipientStatus(phone: String): RecipientStatus {
+                val key = "${config.session!!.accountId}/$phone"
+                val peer = recipients[key]
+                return RecipientStatus(if(peer != null) Availability.AVAILABLE else if(recipients.containsKey(key)) Availability.UNAVAILABLE else Availability.UNKNOWN, peer?.let { Contact(it) })
+            }
+        } }
+
         if (Security.getProvider("AndroidKeyStore") == null) Security.addProvider(object : Provider("AndroidKeyStore", 1.0, "Test provider") {
             init {
                 put("KeyStore.AndroidKeyStore", TestAndroidKeyStore::class.java.name)
@@ -70,8 +88,6 @@ class DumberStateTest {
         context = ApplicationProvider.getApplicationContext()
         DumberAccount.update(context) {
             it.keys().asSequence().toList().forEach { key -> it.remove(key) }
-            it.put("session", JSONObject().put("user_id", self)).put("phone", ownPhone)
-            it.remove("directory"); it.remove("lookup_retry_at"); it.remove("lookup_retry_account")
         }
         org.robolectric.Shadows.shadowOf(context as android.app.Application).grantPermissions(android.Manifest.permission.READ_PHONE_STATE)
         sims(1)
@@ -88,21 +104,213 @@ class DumberStateTest {
     private fun link(account: String, phone: String, subscription: Int, card: Int = -1) {
         DumberAccount.update(context) { it.put("verification", JSONObject().put("nonce", "test-$subscription")
             .put("phone", phone).put("subscription", subscription).put("card_id", card).put("expires", System.currentTimeMillis() + 60000)) }
-        assertTrue(DumberAccount.acceptVerification(context, "test-$subscription", JSONObject().put("user_id", account),
+        assertTrue(DumberAccount.acceptVerification(context, "test-$subscription", session(account),
             DumberSubscriptions.Sim(subscription, "SIM $subscription", null, card)))
+    }
+    @Test fun emptyGroupCreationRetriesTheSameOperationAndAllowsLaterInvites() = runBlocking {
+        val operations = mutableListOf<String>()
+        var info = Conversation("!empty-group", ConversationKind.GROUP, "Friends",
+            capabilities = GroupCapabilities(manage = true, send = true), membership = Membership.JOINED)
+        DumberCore.factory = { object : ChatApi by unusedApi() {
+            override fun createGroup(name: String, phones: List<String>, operationId: String): Conversation {
+                assertEquals("Friends", name)
+                assertTrue(phones.isEmpty())
+                operations.add(operationId)
+                if (operations.size == 1) throw ChatException("Offline", ErrorKind.TRANSPORT_FAILURE)
+                return info
+            }
+            override fun inviteMember(conversationId: String, phone: String) {
+                assertEquals(info.id, conversationId)
+                info = info.copy(members = listOf(GroupMember(Contact(peer, phone), Membership.INVITED)))
+            }
+            override fun conversationInfo(conversationId: String) = info
+        } }
+        assertTrue(runCatching { DumberGroups.create(context, self, "Friends", emptyList()) }.isFailure)
+        val ref = DumberGroups.create(context, self, "Friends", emptyList())
+        assertEquals(2, operations.size)
+        assertEquals(operations.first(), operations.last())
+        DumberGroupStore(context).use { assertNull(it.creation(self)) }
+        val invited = DumberGroups.action(context, ref, DumberGroups.Action.INVITE, phone)
+        assertEquals(Membership.INVITED, invited.members.single().membership)
+    }
+
+    @Test fun groupRetryHonorsSendPermissionAndKeepsItsTransactionAfterFailure() = runBlocking {
+        val ref = GroupReference(self, "!permission-group")
+        var maySend = false
+        val transactions = mutableListOf<String>()
+        DumberCore.factory = { object : ChatApi by unusedApi() {
+            override fun conversationInfo(conversationId: String) = Conversation(ref.room, ConversationKind.GROUP,
+                capabilities = GroupCapabilities(send = maySend), membership = Membership.JOINED)
+            override fun sendText(conversationId: String, body: String, transactionId: String): SentMessage {
+                assertEquals(ref.room, conversationId)
+                transactions.add(transactionId)
+                if (transactions.size == 1) throw ChatException("Offline", ErrorKind.TRANSPORT_FAILURE)
+                return SentMessage("group-delivered", true)
+            }
+        } }
+        val pending = DumberGroups.enqueue(context, ref, "Hello")
+        assertTrue(pending.getLong("timestamp") > 0)
+        assertTrue(runCatching { DumberGroups.retry(context, ref, pending) }.isFailure)
+        assertTrue(transactions.isEmpty())
+        maySend = true
+        assertTrue(runCatching { DumberGroups.retry(context, ref, pending) }.isFailure)
+        DumberGroupStore(context).use { store ->
+            DumberGroups.retry(context, ref, store.pending(ref).single())
+        }
+        assertEquals(listOf(pending.getString("id"), pending.getString("id")), transactions)
+        DumberGroupStore(context).use { store ->
+            assertTrue(store.pending(ref).isEmpty())
+            assertTrue(store.messages(ref).single().encrypted)
+        }
+    }
+
+    @Test fun invitationIsUnreadAndRecentWithoutRepeatingAfterItIsRead() {
+        val ref = GroupReference(self, "!new-invitation")
+        val invitation = Conversation(ref.room, ConversationKind.GROUP, "Friends", membership = Membership.INVITED)
+        DumberGroupStore(context).use { store ->
+            assertTrue(store.metadata(ref, invitation))
+            val row = store.room(ref)!!
+            assertTrue(row.getLong("date") > 0)
+            assertEquals(1, row.getInt("unread"))
+            assertTrue(row.getBoolean("invitation_pending"))
+            val receivedAt = row.getLong("date")
+            store.markRead(ref)
+            assertFalse(store.metadata(ref, invitation))
+            assertEquals(receivedAt, store.room(ref)!!.getLong("date"))
+            assertEquals(0, store.room(ref)!!.getInt("unread"))
+            assertFalse(store.room(ref)!!.getBoolean("invitation_pending"))
+            store.metadata(ref, invitation.copy(membership = Membership.LEFT))
+            store.flag(ref, "hidden", true)
+            store.flag(ref, "archived", true)
+            assertTrue(store.metadata(ref, invitation))
+            assertEquals(1, store.room(ref)!!.getInt("unread"))
+            assertFalse(store.room(ref)!!.getBoolean("hidden"))
+            assertFalse(store.room(ref)!!.getBoolean("archived"))
+        }
+    }
+
+    @Test fun existingInvitationWithoutReceiptMetadataIsRepairedOnce() {
+        val ref = GroupReference(self, "!legacy-invitation")
+        val invitation = Conversation(ref.room, ConversationKind.GROUP, "Friends", membership = Membership.INVITED)
+        DumberGroupStore(context).use { store ->
+            store.metadata(ref, invitation)
+            val legacy = store.room(ref)!!
+            legacy.remove("invitation_received_at")
+            legacy.remove("invitation_pending")
+            legacy.remove("date")
+            legacy.put("unread", 0)
+            store.writableDatabase.execSQL("UPDATE rooms SET payload=? WHERE id=?", arrayOf(DumberAccount.seal(legacy.toString()), ref.key))
+            assertTrue(store.metadata(ref, invitation))
+            assertTrue(store.room(ref)!!.getLong("date") > 0)
+            assertEquals(1, store.room(ref)!!.getInt("unread"))
+            assertFalse(store.metadata(ref, invitation))
+        }
+    }
+
+    @Test fun emptyIncrementalSyncRecoversCachedInvitationAndNotifiesOnce() = runBlocking {
+        val ref = GroupReference(self, "!cached-invitation")
+        val invitation = Conversation(ref.room, ConversationKind.GROUP, "Friends", membership = Membership.INVITED)
+        val manager = context.getSystemService(android.app.NotificationManager::class.java)
+        manager.createNotificationChannel(android.app.NotificationChannel(com.dpad.messaging.App.CHANNEL_MESSAGES, "Messages", android.app.NotificationManager.IMPORTANCE_HIGH))
+        val api = object : ChatApi by unusedApi() {
+            override fun sync() = SyncUpdate(emptyList())
+            override fun conversations() = listOf(invitation)
+        }
+        DumberMessages.sync(context, self, api)
+        DumberGroupStore(context).use { store ->
+            assertEquals(Membership.INVITED, store.info(ref)!!.membership)
+            assertEquals(1, store.room(ref)!!.getInt("unread"))
+            assertFalse(store.room(ref)!!.getBoolean("invitation_pending"))
+            store.markRead(ref)
+        }
+        assertTrue(manager.activeNotifications.any { it.id == 51003 && it.tag == ref.key })
+        DumberGroups.clearInvitationNotification(context, ref)
+        DumberMessages.sync(context, self, api)
+        assertTrue(manager.activeNotifications.none { it.id == 51003 && it.tag == ref.key })
+        DumberGroupStore(context).use { assertEquals(0, it.room(ref)!!.getInt("unread")) }
+    }
+
+    @Test fun groupAndPartialInvitationsRequireExplicitAcceptance() = runBlocking {
+        val commands = mutableListOf<String>()
+        val api = object : ChatApi by unusedApi() {
+            override fun sync(): SyncUpdate {
+                commands.add("sync")
+                return SyncUpdate(listOf(ConversationKind.GROUP,ConversationKind.UNKNOWN).map { kind ->
+                    ConversationUpdate(Conversation(if(kind == ConversationKind.GROUP) "!group-invite" else "!partial-invite",kind,"Friends",membership=Membership.INVITED),emptyList())
+                })
+            }
+            override fun conversations(): List<Conversation> { commands.add("conversations"); return emptyList() }
+        }
+        DumberMessages.sync(context,self,api)
+        assertEquals(listOf("sync","conversations"),commands)
+        DumberGroupStore(context).use { store ->
+            assertEquals(Membership.INVITED,store.info(GroupReference(self,"!group-invite"))!!.membership)
+            assertNull(store.room(GroupReference(self,"!partial-invite")))
+        }
+    }
+    @Test fun groupHistoryIsRoomAndAccountScopedAndDeletionDoesNotResurrect() {
+        val first = GroupReference(self,"!group-one")
+        val second = GroupReference(self,"!group-two")
+        val otherAccount = GroupReference(peer,"!group-one")
+        val info = Conversation(first.room,ConversationKind.GROUP,"Friends",membership=Membership.JOINED)
+        fun message(body: String) = Message("group-event",Contact(peer,phone),42,MessageContent.Text(body),true)
+        DumberGroupStore(context).use { store ->
+            listOf(first,second,otherAccount).forEach { store.metadata(it,info.copy(id=it.room)) }
+            assertTrue(store.event(first,message("private group body")))
+            assertFalse(store.event(first,message("private group body")))
+            assertTrue(store.event(second,message("second room")))
+            assertTrue(store.event(otherAccount,message("other account")))
+            assertEquals(1,store.room(first)!!.getInt("unread"))
+            store.markRead(first)
+            assertEquals(0,store.room(first)!!.getInt("unread"))
+            store.setRead(first, false)
+            assertEquals(1,store.room(first)!!.getInt("unread"))
+            assertEquals(1,store.room(second)!!.getInt("unread"))
+            assertEquals(3,store.conversations().size)
+            assertEquals(3,store.conversations().map { it.referenceKey }.distinct().size)
+            store.flag(first,"archived",true)
+            assertEquals(first,store.conversations(true).single().group)
+            store.readableDatabase.rawQuery("SELECT payload FROM messages",null).use { cursor ->
+                while(cursor.moveToNext()) assertFalse(cursor.getString(0).contains("private group body"))
+            }
+            DumberInbox(context,self).use { it.enqueue(first.room,Message("waiting-group-key",Contact(peer),1,MessageContent.UnableToDecrypt,true)) }
+            store.deleteHistory(first)
+            DumberInbox(context,self).use { assertTrue(it.handled("waiting-group-key")) }
+            assertFalse(store.event(first,message("private group body")))
+            assertTrue(store.messages(first).isEmpty())
+            assertEquals("second room",(store.messages(second).single().content as MessageContent.Text).body)
+        }
+        DumberGroupStore(context).use { store ->
+            assertTrue(store.messages(first).isEmpty())
+            assertEquals(1,store.messages(otherAccount).size)
+        }
+    }
+    @Test fun groupOutboxEchoCompletesOnlyItsOwnRoomAndOriginalAccount() {
+        val ref = GroupReference(self,"!outbox-group")
+        val other = GroupReference(peer,"!outbox-group")
+        val pending = JSONObject().put("id","group-txn").put("account",self).put("room",ref.room).put("body","pending")
+        DumberGroupStore(context).use { store -> store.savePending(ref,pending) }
+        DumberGroupStore(context).use { store ->
+            assertEquals(self,store.pending(ref).single().getString("account"))
+            val echo = Message("group-echo",Contact(self,ownPhone),1,MessageContent.Text("pending"),true,"group-txn")
+            store.event(other,echo)
+            assertEquals(1,store.pending(ref).size)
+            store.event(ref,echo)
+            assertTrue(store.pending(ref).isEmpty())
+        }
     }
     @Test fun replacementAdoptsSessionAndChangesCryptoStoreWithoutDroppingAccountHistory() {
         DumberAccount.update(context) {
-            it.getJSONObject("session").put("device_id", "old").put("access_token", "old-token")
+            it.getJSONObject("accounts").getJSONObject(self).put("session",ChatStorage.encodeSession(session(credentials="old-token",device="old")))
             it.put("verification", JSONObject().put("nonce", "replace").put("phone", ownPhone)
                 .put("subscription", 1).put("expires", System.currentTimeMillis() + 60000))
         }
         val oldStore = DumberAccount.storeName(context, self)
         val oldPassword = DumberAccount.password(context, self)
         assertTrue(DumberAccount.acceptVerification(context, "replace",
-            JSONObject().put("user_id", self).put("device_id", "new").put("access_token", "new-token"),
+            session(credentials="new-token", device="new"),
             DumberSubscriptions.Sim(1, "SIM 1", null)))
-        assertEquals("new-token", DumberAccount.state(context, self).getJSONObject("session").getString("access_token"))
+        assertEquals("new-token", DumberAccount.session(context,self)!!.credentials)
         assertNotEquals(oldStore, DumberAccount.storeName(context, self))
         assertNotEquals(oldPassword, DumberAccount.password(context, self))
         assertTrue(DumberAccount.ids(context).contains(self))
@@ -131,7 +339,7 @@ class DumberStateTest {
         assertFalse(DumberDisconnect.flush(context) { throw java.io.IOException("offline") })
         assertTrue(DumberAccount.logoutPending(context, other))
         assertTrue(DumberDisconnect.flush(context) {
-            assertEquals(other, it.getJSONObject("session").getString("user_id"))
+            assertEquals(other, it.accountId)
             JSONObject()
         })
         assertFalse(DumberAccount.logoutPending(context, other))
@@ -142,14 +350,14 @@ class DumberStateTest {
     }
     @Test fun manualLogoutCancelsMatchingVerificationAndRetainsOldSessionForRetry() {
         DumberAccount.update(context) {
-            it.getJSONObject("session").put("access_token", "old")
+            it.getJSONObject("accounts").getJSONObject(self).put("session",ChatStorage.encodeSession(session(credentials="old")))
             it.put("verification", JSONObject().put("phone", ownPhone).put("nonce", "old-verification"))
         }
         assertTrue(DumberAccount.logout(context, self))
         assertFalse(DumberAccount.read(context).has("verification"))
         link(self, ownPhone, 1)
         assertTrue(DumberDisconnect.flush(context) {
-            assertEquals("old", it.getJSONObject("session").getString("access_token"))
+            assertEquals("old", it.credentials)
             JSONObject()
         })
         assertTrue(DumberAccount.enabled(context, self))
@@ -159,71 +367,109 @@ class DumberStateTest {
         assertTrue(DumberAccount.logout(context, self))
         assertTrue(DumberAccount.read(context).has("verification"))
     }
-    @Test fun removedSimDisconnectsOnlyItsAccountAndKeepsHistoryIdentity() {
+    @Test fun removedSimStaysConnectedUntilExplicitDeregistration() {
         val other = "@other:example.test"
         sims(1, 2)
         link(other, "+15555550102", 2)
         val store = DumberAccount.storeName(context, self)
-        val warnings = DumberAccount.disconnectMissing(context, setOf(2))
-        assertEquals(1, warnings.size)
-        assertTrue(warnings.single().contains(ownPhone))
+        val password = DumberAccount.password(context, self)
+        assertTrue(DumberAccount.reviewMissing(context, setOf(2)))
+        val prompt = DumberAccount.pendingRemovals(context).single()
+        assertEquals(self, prompt.account)
+        assertEquals(ownPhone, prompt.phone)
+        assertTrue(DumberAccount.enabled(context, self))
+        assertFalse(DumberAccount.logoutPending(context, self))
+        assertFalse(DumberAccount.reviewMissing(context, setOf(2)))
+        DumberAccount.chooseRemoval(context, prompt, false)
         assertFalse(DumberAccount.enabled(context, self))
         assertTrue(DumberAccount.enabled(context, other))
-        assertNull(DumberAccount.forSubscription(context, 1))
-        assertEquals(other, DumberAccount.forSubscription(context, 2))
         assertEquals(store, DumberAccount.storeName(context, self))
+        assertEquals(password, DumberAccount.password(context, self))
+        assertTrue(DumberAccount.pendingRemovals(context).isEmpty())
+        assertTrue(DumberAccount.logoutPending(context, self))
+        DumberAccount.chooseRemoval(context, prompt, false)
         assertEquals(1, DumberAccount.read(context).getJSONObject("pending_logouts").length())
-        assertTrue(DumberAccount.disconnectMissing(context, setOf(2)).isEmpty())
-        assertEquals(1, DumberAccount.removalWarnings(context).size)
     }
-    @Test fun unboundLegacyAccountIsDisconnectedWhileLinkedAccountStaysEnabled() {
+    @Test fun unboundAccountAsksForChoiceWithoutDisconnecting() {
         DumberAccount.update(context) { it.remove("sim_bindings") }
         link("@comviq:example.test", "+15555550102", 2)
-        val warnings = DumberAccount.disconnectMissing(context, setOf(2))
-        assertEquals(1, warnings.size)
-        assertTrue(warnings.single().contains(ownPhone))
-        assertFalse(DumberAccount.enabled(context, self))
+        assertTrue(DumberAccount.reviewMissing(context, setOf(2)))
+        assertEquals(self, DumberAccount.pendingRemovals(context).single().account)
+        assertTrue(DumberAccount.enabled(context, self))
         assertTrue(DumberAccount.enabled(context, "@comviq:example.test"))
     }
-    @Test fun removingLastSimDisablesAllReception() {
-        DumberAccount.disconnectMissing(context, emptySet())
+    @Test fun keepConnectionPersistsAndReinsertionAllowsANewChoice() {
+        assertTrue(DumberAccount.reviewMissing(context, emptySet()))
+        val old = DumberAccount.pendingRemovals(context).single()
+        DumberAccount.chooseRemoval(context, old, true)
+        assertTrue(DumberAccount.enabled(context))
+        assertFalse(DumberAccount.logoutPending(context, self))
+        assertTrue(DumberAccount.pendingRemovals(context).isEmpty())
+        // Re-read the encrypted file and restart the monitor: no repeated prompt.
+        DumberAccount::class.java.getDeclaredField("cached").apply { isAccessible = true }.set(null, null)
+        assertTrue(DumberAccount.read(context).getJSONObject("accounts").getJSONObject(self)
+            .getJSONObject("sim_choice").getBoolean("keep"))
+        val monitor = DumberSimMonitor()
+        monitor.check(context, emptySet(), 0)
+        monitor.check(context, emptySet(), 5000)
+        assertTrue(DumberAccount.pendingRemovals(context).isEmpty())
+        DumberAccount.reviewMissing(context, setOf(1))
+        DumberAccount.reviewMissing(context, emptySet())
+        val next = DumberAccount.pendingRemovals(context).single()
+        assertNotEquals(old.nonce, next.nonce)
+        DumberAccount.chooseRemoval(context, old, false)
+        assertTrue(DumberAccount.enabled(context))
+        assertFalse(DumberAccount.logoutPending(context, self))
+        DumberAccount.chooseRemoval(context, next, false)
         assertFalse(DumberAccount.enabled(context))
     }
+    @Test fun staleRemovalDialogCannotDeregisterNewSession() {
+        DumberAccount.reviewMissing(context, emptySet())
+        val prompt = DumberAccount.pendingRemovals(context).single()
+        link(self, ownPhone, 1)
+        DumberAccount.chooseRemoval(context, prompt, false)
+        assertTrue(DumberAccount.enabled(context))
+        assertFalse(DumberAccount.logoutPending(context, self))
+        assertTrue(DumberAccount.pendingRemovals(context).isEmpty())
+    }
+    private fun deregisterMissing() {
+        DumberAccount.reviewMissing(context, emptySet())
+        DumberAccount.chooseRemoval(context, DumberAccount.pendingRemovals(context).single(), false)
+    }
     @Test fun offlineLogoutRetriesAndDoesNotReenableAccount() {
-        DumberAccount.disconnectMissing(context, emptySet())
+        deregisterMissing()
         assertFalse(DumberDisconnect.flush(context) { throw java.io.IOException("offline") })
         assertFalse(DumberAccount.enabled(context, self))
         var calls = 0
         assertTrue(DumberDisconnect.flush(context) {
             calls++
-            assertEquals(self, it.getJSONObject("session").getString("user_id"))
-            assertEquals("logout", it.getString("command"))
+            assertEquals(self, it.accountId)
             JSONObject()
         })
         assertEquals(1, calls)
         assertTrue(DumberDisconnect.flush(context) { error("already logged out") })
     }
     @Test fun revokedSessionCompletesLogout() {
-        DumberAccount.disconnectMissing(context, emptySet())
-        assertTrue(DumberDisconnect.flush(context) { throw DumberException("revoked", 401) })
+        deregisterMissing()
+        assertTrue(DumberDisconnect.flush(context) { throw ChatException("revoked", ErrorKind.AUTHENTICATION_REQUIRED) })
     }
     @Test fun reconnectRequiresVerificationAndOldLogoutCannotRevokeNewSession() {
-        DumberAccount.updateAccount(context, self) { it.getJSONObject("session").put("access_token", "old") }
-        DumberAccount.disconnectMissing(context, emptySet())
+        DumberAccount.updateAccount(context, self) { it.put("session",ChatStorage.encodeSession(session(credentials="old"))) }
+        deregisterMissing()
         sims(1)
         assertNull(DumberAccount.forSubscription(context, 1))
         DumberAccount.update(context) { it.put("verification", JSONObject().put("nonce", "reconnect")
             .put("phone", ownPhone).put("subscription", 1).put("expires", System.currentTimeMillis() + 60000)) }
         assertTrue(DumberAccount.acceptVerification(context, "reconnect",
-            JSONObject().put("user_id", self).put("access_token", "new"), DumberSubscriptions.Sim(1, "SIM 1", null)))
+            session(credentials="new"), DumberSubscriptions.Sim(1, "SIM 1", null)))
         assertTrue(DumberAccount.enabled(context, self))
         assertTrue(DumberAccount.removalWarnings(context).isEmpty())
         assertTrue(DumberDisconnect.flush(context) {
-            assertEquals("old", it.getJSONObject("session").getString("access_token")); JSONObject()
+            assertEquals("old", it.credentials); JSONObject()
         })
-        assertEquals("new", DumberAccount.state(context, self).getJSONObject("session").getString("access_token"))
+        assertEquals("new", DumberAccount.session(context,self)!!.credentials)
     }
-    @Test fun uncertainOrBrieflyMissingSubscriptionsDoNotDisconnect() {
+    @Test fun uncertainOrBrieflyMissingSubscriptionsDoNotPrompt() {
         val monitor = DumberSimMonitor()
         monitor.check(context, emptySet(), 0)
         monitor.check(context, emptySet(), 4999)
@@ -235,6 +481,12 @@ class DumberStateTest {
         monitor.check(context, setOf(1), 11000)
         monitor.check(context, setOf(1), 20000)
         assertTrue(DumberAccount.enabled(context, self))
+        assertTrue(DumberAccount.pendingRemovals(context).isEmpty())
+        monitor.check(context, emptySet(), 21000)
+        monitor.check(context, emptySet(), 26000)
+        assertEquals(1, DumberAccount.pendingRemovals(context).size)
+        assertTrue(DumberAccount.enabled(context, self))
+        assertFalse(DumberAccount.logoutPending(context, self))
     }
     @Test fun unavailableRecipientDialogOffersSmsAndCancelKeepsMessage() {
         val controller = org.robolectric.Robolectric.buildActivity(androidx.appcompat.app.AppCompatActivity::class.java)
@@ -243,7 +495,7 @@ class DumberStateTest {
         val message = DumberOutbox.message(self, phone, "keep this draft", 880, 1, null)
             .put("recipient_unavailable", true).put("reason", "Recipient no longer available")
         val id = message.getString("id")
-        DumberDirectory.remember(context, self, phone, null)
+        remember(context, self, phone, null)
         DumberOutbox(context).use { it.save(message) }
         try {
             val status = android.widget.Button(activity)
@@ -269,14 +521,15 @@ class DumberStateTest {
     }
     @Test fun rejectionDemotesRecipientAndPreservesPendingMessageAndUncertainty() = runBlocking {
         for (uncertain in listOf(false, true)) {
-            DumberDirectory.remember(context, self, phone, peer, authoritative = true)
+            remember(context, self, phone, peer, authoritative = true)
             val message = DumberOutbox.message(self, phone, "keep rejected text", 778, 1, null)
                 .put("peer", peer).put("uncertain", uncertain)
             val id = message.getString("id")
             DumberOutbox(context).use { it.save(message) }
             try {
                 assertFalse(DumberDelivery.retry(context, id) { _, _ ->
-                    throw DumberException("Recipient no longer available", 403, errorCode = "DUMBER_RECIPIENT_UNAVAILABLE")
+                    remember(context,self,phone,null) // Rust has already updated its availability cache.
+                    throw ChatException("Recipient no longer available", ErrorKind.RECIPIENT_UNAVAILABLE)
                 })
                 val status = DumberDirectory.cached(context, phone, account = self)
                 assertTrue(status.absent); assertNull(status.peer)
@@ -293,50 +546,18 @@ class DumberStateTest {
         }
     }
     @Test fun permissionAndNetworkFailuresNeverDemoteRecipient() = runBlocking {
-        DumberDirectory.remember(context, self, phone, peer)
-        for (error in listOf(DumberException("forbidden", 403), DumberException("offline", 502),
-                DumberException("wrong status", 500, errorCode = "DUMBER_RECIPIENT_UNAVAILABLE"))) {
+        remember(context, self, phone, peer)
+        for (error in listOf(ChatException("forbidden", ErrorKind.PERMISSION_DENIED), ChatException("offline", ErrorKind.TRANSPORT_FAILURE),
+                ChatException("server error", ErrorKind.TRANSPORT_FAILURE))) {
             val message = DumberOutbox.message(self, phone, "pending", 779, 1, null).put("peer", peer)
             val id = message.getString("id")
             DumberOutbox(context).use { it.save(message) }
             try {
                 assertFalse(DumberDelivery.retry(context, id) { _, _ -> throw error })
-                assertEquals(peer, DumberDirectory.cached(context, phone).peer)
+                assertEquals(peer, DumberDirectory.cached(context, phone, account = self).peer)
                 DumberOutbox(context).use { assertFalse(it.get(id)!!.optBoolean("recipient_unavailable")) }
             } finally { DumberOutbox(context).use { it.delete(id) } }
         }
-    }
-    @Test fun negativeRoutingSurvivesHistoricalResolutionAndFailedExpiredRecheck() = runBlocking {
-        DumberDirectory.remember(context, self, phone, null)
-        DumberDirectory.remember(context, self, phone, peer) // old sync/reverse resolution
-        assertTrue(DumberDirectory.cached(context, phone).absent)
-        DumberDirectory.lookup(context, phone, fetch = { error("24 hour cache should avoid lookup") })
-        DumberAccount.updateAccount(context, self) { it.getJSONObject("directory").getJSONObject("recipients").getJSONObject(phone).put("checked", 0) }
-        var calls = 0
-        assertTrue(DumberDirectory.lookup(context, phone, fetch = { calls++; throw java.io.IOException("offline") }).absent)
-        assertTrue(DumberDirectory.lookup(context, phone, fetch = { error("transient backoff") }).absent)
-        assertEquals(1, calls)
-        assertEquals(peer, DumberDirectory.lookup(context, phone, force = true, fetch = { peer }).peer)
-    }
-    @Test fun rejectedRecipientDoesNotSpendLookupQuotaOrAffectOtherSim() = runBlocking {
-        sims(1, 2); val other = "@other:example.test"; link(other, "+15555550200", 2)
-        DumberDirectory.remember(context, self, phone, peer)
-        DumberDirectory.remember(context, other, phone, peer)
-        DumberDirectory.remember(context, self, phone, null)
-        assertEquals(peer, DumberDirectory.cached(context, phone, account = other).peer)
-        assertTrue(DumberDirectory.lookup(context, phone, fetch = { error("no lookup after rejection") }).absent)
-        DumberAccount.updateAccount(context, self) { it.getJSONObject("directory").getJSONObject("recipients").getJSONObject(phone).put("checked", 0) }
-        assertTrue(DumberDirectory.lookup(context, phone, fetch = { throw DumberException("quota", 429, 120) }).absent)
-        assertTrue(DumberDirectory.lookup(context, phone, force = true, fetch = { error("must honor account quota") }).absent)
-    }
-    @Test fun inflightLookupCannotUndoNewerSendRejection() = runBlocking {
-        DumberDirectory.remember(context, self, phone, peer)
-        val result = DumberDirectory.lookup(context, phone, force = true, fetch = {
-            DumberDirectory.remember(context, self, phone, null)
-            peer
-        })
-        assertTrue(result.absent)
-        assertNull(DumberDirectory.cached(context, phone).peer)
     }
     @Test fun conversationChecksOnlyOnOpenAndShowsComposerTransport() {
         val controller = org.robolectric.Robolectric.buildActivity(androidx.appcompat.app.AppCompatActivity::class.java)
@@ -349,7 +570,7 @@ class DumberStateTest {
         var engineAvailable = true
         val ui = DumberConversationUi(activity, status, pending, { phone }, { 42 }, { -1 }, { carrierOnly }, { engineAvailable }) { number, _, account ->
             calls++
-            DumberDirectory.remember(activity, account, number, peer)
+            remember(activity, account, number, peer)
             DumberDirectory.Status(peer = peer)
         }
         assertEquals(0, calls)
@@ -371,58 +592,23 @@ class DumberStateTest {
         assertEquals(activity.getString(com.dpad.messaging.R.string.dumber_status_unknown) + " · " + ownPhone, status.text.toString())
         controller.pause().stop().destroy()
     }
-    @Test fun repeatedAndConcurrentOpeningsReuseKnownPeer() = runBlocking {
-        var calls = 0
-        val results = (1..60).map { async { DumberDirectory.lookup(context, phone, fetch = { calls++; peer }) } }.awaitAll()
-        assertEquals(1, calls)
-        assertTrue(results.all { it.peer == peer })
-        repeat(100) { assertEquals(DeliveryRoute.ENCRYPTED, deliveryRoute(true, DumberDirectory.cached(context, phone).peer, false)) }
-    }
-    @Test fun onlyDefinitive404DemotesAndNegativeResultsExpire() = runBlocking {
-        DumberDirectory.lookup(context, phone, fetch = { peer })
-        for (status in listOf(401, 403, 500, 502)) {
-            assertEquals(peer, DumberDirectory.lookup(context, phone, force = true, fetch = { throw DumberException("failed", status) }).peer)
-        }
-        val missing = DumberDirectory.lookup(context, phone, force = true, fetch = { throw DumberException("missing", 404) })
-        assertTrue(missing.absent)
-        assertTrue(DumberDirectory.lookup(context, phone, fetch = { error("must use negative cache") }).absent)
-        assertTrue(DumberDirectory.cached(context, phone, System.currentTimeMillis() + DumberDirectory.NEGATIVE_TTL + 1).absent)
-        DumberAccount.update(context) { it.getJSONObject("directory").getJSONObject("recipients").getJSONObject(phone).put("checked", 0) }
-        assertEquals(peer, DumberDirectory.lookup(context, phone, fetch = { peer }).peer)
-    }
-    @Test fun rateLimitsAndOfflineStayUnknownAndRespectRetryTime() = runBlocking {
-        val offline = DumberDirectory.lookup(context, phone, fetch = { throw java.io.IOException("offline") })
-        assertFalse(offline.absent); assertNull(offline.peer)
-        val limited = DumberDirectory.lookup(context, phone, fetch = { throw DumberException("limited", 429, 120) })
-        assertFalse(limited.absent); assertTrue(limited.retryAt > System.currentTimeMillis())
-        DumberDirectory.lookup(context, "+15555550102", fetch = { error("retry guard must apply across numbers") })
-        // A lookup quota never removes an already known send route.
-        DumberDirectory.remember(context, DumberDirectory.account(context), phone, peer)
-        assertEquals(peer, DumberDirectory.lookup(context, phone, fetch = { error("known peer must not use quota") }).peer)
-    }
-    @Test fun accountSwitchDoesNotExposeCachedRecipients() = runBlocking {
-        DumberDirectory.lookup(context, phone, fetch = { peer })
-        DumberAccount.update(context) { it.put("session", JSONObject().put("user_id", "@other:example.test")) }
-        assertNull(DumberDirectory.cached(context, phone).peer)
-        assertEquals("@new:example.test", DumberDirectory.lookup(context, phone, fetch = { "@new:example.test" }).peer)
-    }
     @Test fun failedEncryptedRetryStaysPendingWithoutDemotingOrSendingSms() = runBlocking {
-        DumberDirectory.remember(context, DumberDirectory.account(context), phone, peer)
-        val message = DumberOutbox.message(DumberDirectory.account(context), phone, "keep me", 42, 1, null).put("peer", peer)
+        remember(context, self, phone, peer)
+        val message = DumberOutbox.message(self, phone, "keep me", 42, 1, null).put("peer", peer)
         val id = message.getString("id")
         DumberOutbox(context).use { it.save(message) }
         try {
             // No native Android library on the JVM: this exercises unavailable encryption.
             assertFalse(DumberDelivery.retry(context, id))
             DumberOutbox(context).use { assertEquals("keep me", it.get(id)!!.getString("body")) }
-            assertEquals(peer, DumberDirectory.cached(context, phone).peer)
+            assertEquals(peer, DumberDirectory.cached(context, phone, account = self).peer)
         } finally { DumberOutbox(context).use { it.delete(id) } }
     }
     @Test fun unavailableEngineKeepsNewSendPending() = runBlocking {
-        DumberDirectory.remember(context, DumberDirectory.account(context), phone, peer)
+        remember(context, self, phone, peer)
         assertTrue(DumberDelivery.send(context, phone, "keep new send", 43, 1, null))
         DumberOutbox(context).use { queue ->
-            val pending = queue.list(DumberDirectory.account(context), 43)
+            val pending = queue.list(self, 43)
             try {
                 assertEquals(1, pending.size)
                 assertEquals("keep new send", pending.single().getString("body"))
@@ -459,7 +645,7 @@ class DumberStateTest {
         var selected = 1
         val lookups = mutableListOf<String>()
         val ui = DumberConversationUi(activity, status, android.widget.Button(activity), { phone }, { 42 }, { selected }, { false }, { true }) { number, _, account ->
-            lookups.add(account); DumberDirectory.remember(activity, account, number, peer); DumberDirectory.Status(peer = peer)
+            lookups.add(account); remember(activity, account, number, peer); DumberDirectory.Status(peer = peer)
         }
         ui.open(); org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
         assertTrue(status.text.toString().endsWith(ownPhone))
@@ -475,54 +661,31 @@ class DumberStateTest {
         DumberAccount.update(context) { it.put("verification", JSONObject().put("nonce", "n").put("phone", "+15555550200")
             .put("subscription", 2).put("expires", System.currentTimeMillis()+60000)) }
         val sim = DumberSubscriptions.Sim(2, "Work", "+15555550999") // A carrier's stale number.
-        assertTrue(DumberAccount.acceptVerification(context, "n", JSONObject().put("user_id", "@work:example.test"), sim))
+        assertTrue(DumberAccount.acceptVerification(context, "n", session("@work:example.test"), sim))
         assertEquals("@work:example.test", DumberAccount.forSim(context, sim))
         assertEquals("+15555550200", DumberAccount.state(context, "@work:example.test").getString("phone"))
         assertNull(DumberAccount.forSim(context, sim.copy(number = "+15555550888")))
     }
-    @Test fun lookupCachesAndRateLimitsAreIndependentPerSim() = runBlocking {
-        sims(1, 2); val work = "@work:example.test"; link(work, "+15555550200", 2)
-        DumberDirectory.lookup(context, phone, account = self, fetch = { throw DumberException("quota", 429, 120) })
-        assertEquals(peer, DumberDirectory.lookup(context, phone, account = work, fetch = { peer }).peer)
-        assertNull(DumberDirectory.cached(context, phone, account = self).peer)
-        DumberDirectory.lookup(context, phone, account = self, fetch = { error("must honor this account's retry time") })
-        Unit
-    }
-    @Test fun cryptoAndInboxAreIsolatedWhileLegacyStoreSurvives() {
-        val oldPassword = DumberAccount.password(context)
+    @Test fun cryptoAndInboxAreAccountScoped() {
+        val oldPassword = DumberAccount.password(context, self)
         val work = "@work:example.test"; link(work, "+15555550200", 2)
-        val personalRequest = DumberCore.request(context, "sync", self)
-        val workRequest = DumberCore.request(context, "sync", work)
-        assertTrue(personalRequest.getString("store_path").endsWith("/dumber-crypto"))
-        assertEquals(oldPassword, personalRequest.getString("store_password"))
-        assertNotEquals(personalRequest.getString("store_path"), workRequest.getString("store_path"))
-        assertNotEquals(personalRequest.getString("store_password"), workRequest.getString("store_password"))
-        assertEquals(work, workRequest.getJSONObject("session").getString("user_id"))
-        assertEquals(DumberProtocol.MARKER + "!room/event", DumberMessages.eventMarker(context, self, "!room", "event"))
-        assertNotEquals(DumberMessages.eventMarker(context, self, "!room", "event"), DumberMessages.eventMarker(context, work, "!room", "event"))
-        val event = JSONObject().put("event_id", "$" + "test").put("e2ee", true)
+        val personalRequest = DumberCore.config(context, self)
+        val workRequest = DumberCore.config(context, work)
+        assertEquals(oldPassword, personalRequest.store!!.password)
+        assertNotEquals(personalRequest.store!!.path, workRequest.store!!.path)
+        assertNotEquals(personalRequest.store!!.password, workRequest.store!!.password)
+        assertEquals(work, workRequest.session!!.accountId)
+        assertEquals(DumberProtocol.MARKER + self + "/!room/event", DumberMessages.eventMarker(self, "!room", "event"))
+        assertNotEquals(DumberMessages.eventMarker(self, "!room", "event"), DumberMessages.eventMarker(work, "!room", "event"))
+        val event = Message("$" + "test",Contact(peer),1,MessageContent.Text("body"),true)
         DumberInbox(context, self).use { it.enqueue("!personal", event) }
         DumberInbox(context, work).use { assertTrue(it.pending().isEmpty()) }
-        DumberInbox(context).use { assertEquals(1, it.pending().size) }
-    }
-    @Test fun legacyAccountNeedsExplicitBindingAndRelinkAdoptsNewSession() {
-        DumberAccount.update(context) { it.remove("sim_bindings"); it.getJSONObject("session").put("device_id", "original") }
-        assertNull(DumberAccount.forSubscription(context, 1))
-        assertTrue(DumberAccount.enabled(context))
-        assertTrue(DumberAccount.needsLegacyLink(context))
-        runBlocking {
-            try { DumberDelivery.send(context, phone, "old account", 93, 1, null); fail("must ask to link, not send SMS") }
-            catch (expected: IllegalStateException) { assertTrue(expected.message!!.contains("Link your existing")) }
-        }
-        link(self, ownPhone, 1)
-        assertFalse(DumberAccount.needsLegacyLink(context))
-        assertFalse(DumberAccount.state(context, self).getJSONObject("session").has("device_id"))
-        assertEquals(self, DumberAccount.forSubscription(context, 1))
+        DumberInbox(context, self).use { assertEquals(1, it.pending().size) }
     }
     @Test fun verificationRejectsWrongSimStaleNonceAndChangedCard() {
         DumberAccount.update(context) { it.put("verification", JSONObject().put("nonce", "pending").put("phone", ownPhone)
             .put("subscription", 1).put("card_id", 10).put("expires", System.currentTimeMillis()+60000)) }
-        val session = JSONObject().put("user_id", self)
+        val session = session()
         assertFalse(DumberAccount.acceptVerification(context, "pending", session, DumberSubscriptions.Sim(2, "SIM 2", null, 10)))
         assertFalse(DumberAccount.acceptVerification(context, "old", session, DumberSubscriptions.Sim(1, "SIM 1", null, 10)))
         assertFalse(DumberAccount.acceptVerification(context, "pending", session, DumberSubscriptions.Sim(1, "SIM 1", null, 11)))
@@ -540,8 +703,8 @@ class DumberStateTest {
     }
     @Test fun pendingSendsKeepOriginalAccountAndSimAndRejectFallbackAfterRemoval() = runBlocking {
         sims(1, 2); val work = "@work:example.test"; link(work, "+15555550200", 2)
-        DumberDirectory.remember(context, self, phone, peer)
-        DumberDirectory.remember(context, work, phone, "@workpeer:example.test")
+        remember(context, self, phone, peer)
+        remember(context, work, phone, "@workpeer:example.test")
         assertTrue(DumberDelivery.send(context, phone, "personal", 91, 1, null))
         assertTrue(DumberDelivery.send(context, phone, "work", 91, 2, null))
         DumberOutbox(context).use { queue ->
@@ -563,7 +726,7 @@ class DumberStateTest {
     }
     @Test fun unregisteredSimUsesCarrierAndNeverBorrowsAnotherAccount() = runBlocking {
         sims(1, 2)
-        DumberDirectory.remember(context, self, phone, peer)
+        remember(context, self, phone, peer)
         assertFalse(DumberDelivery.send(context, phone, "carrier", 92, 2, null))
         DumberOutbox(context).use { assertTrue(it.list(self, 92).isEmpty()) }
     }
@@ -586,46 +749,35 @@ class DumberStateTest {
             } finally { queue.delete(id) }
         }
     }
-    @Test fun inboxUpgradeDropsOnlyObsoleteHistoryCursors() {
-        val id = "migration-pending"
-        val done = "migration-handled"
+    @Test fun inboxReopensWithPendingMessagesAndDeletionTombstones() {
+        val id = "reopened-pending"
+        val done = "reopened-handled"
         DumberInbox(context, self).use { inbox ->
-            inbox.enqueue("!room", JSONObject().put("event_id", id).put("e2ee", true)
-                .put("origin_server_ts", 1).put("content", JSONObject().put("body", "old local message")))
-            inbox.enqueue("!room", JSONObject().put("event_id", done).put("e2ee", true))
+            inbox.enqueue("!room", Message(id,Contact(peer),1,MessageContent.Text("old local message"),true))
+            inbox.enqueue("!room", Message(done,Contact(peer),1,MessageContent.Text("body"),true))
             inbox.done(done)
-            inbox.writableDatabase.execSQL("CREATE TABLE IF NOT EXISTS history (room_id TEXT PRIMARY KEY NOT NULL, token TEXT NOT NULL)")
-            inbox.writableDatabase.execSQL("INSERT OR REPLACE INTO history VALUES ('!room', 'old-server-cursor')")
-            inbox.writableDatabase.version = 1
         }
         DumberInbox(context, self).use { inbox ->
             assertEquals(2, inbox.readableDatabase.version)
-            assertEquals("old local message", inbox.pending().single { it.second.getString("event_id") == id }.second.getJSONObject("content").getString("body"))
+            assertEquals("old local message", inbox.pending().single { it.second.eventId == id }.second.content.let { (it as MessageContent.Text).body })
             assertTrue(inbox.handled(done))
-            inbox.enqueue("!room", JSONObject().put("event_id", done).put("e2ee", true))
-            assertFalse(inbox.pending().any { it.second.optString("event_id") == done })
+            inbox.enqueue("!room", Message(done,Contact(peer),1,MessageContent.Text("body"),true))
+            assertFalse(inbox.pending().any { it.second.eventId == done })
             inbox.readableDatabase.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='history'", null).use {
                 assertFalse(it.moveToFirst())
             }
         }
     }
     @Test fun limitedSyncQueuesMessagesWithoutCallingRemovedHistoryApi() = runBlocking {
-        DumberAccount.updateAccount(context, self) { it.put("connected_at", 0) }
-        val event = JSONObject().put("event_id", "limited-encrypted-event")
-            .put("type", "m.room.message").put("sender", peer).put("origin_server_ts", 1)
-            .put("unable_to_decrypt", true).put("encrypted_event", JSONObject().put("type", "m.room.encrypted"))
+        DumberAccount.updateAccount(context,self) { it.put("connected_at",0) }
+        val event = Message("limited-encrypted-event",Contact(peer),1,MessageContent.UnableToDecrypt,true)
         val commands = mutableListOf<String>()
-        DumberMessages.sync(context, self) { request ->
-            commands.add(request.getString("command"))
-            check(request.getString("command") == "sync") { "Unexpected legacy call" }
-            JSONObject().put("next_batch", "sdk-owned").put("rooms", JSONObject().put("join", JSONObject()
-                .put("!room", JSONObject().put("timeline", JSONObject().put("limited", true)
-                    .put("prev_batch", "obsolete-token").put("events", org.json.JSONArray().put(event))))))
+        val api = object : ChatApi by unusedApi() {
+            override fun sync(): SyncUpdate { commands.add("sync"); return SyncUpdate(listOf(ConversationUpdate(Conversation("!room"),listOf(event),true))) }
+            override fun conversations(): List<Conversation> { commands.add("conversations"); return emptyList() }
         }
-        assertEquals(listOf("sync"), commands)
-        DumberInbox(context, self).use { inbox ->
-            assertTrue(inbox.pending().any { it.second.optString("event_id") == "limited-encrypted-event" })
-        }
+        DumberMessages.sync(context,self,api)
+        assertEquals(listOf("sync","conversations"),commands)
+        DumberInbox(context,self).use { assertTrue(it.pending().any { record -> record.second.eventId == "limited-encrypted-event" }) }
     }
-
 }

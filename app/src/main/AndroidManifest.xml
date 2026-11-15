@@ -77,6 +77,7 @@
         tools:targetApi="31">
 
 
+        <activity android:name=".dumber.DumberGroupActivity" android:exported="false" android:label="Encrypted group" />
         <activity android:name=".dumber.DumberConnectActivity" android:exported="false" android:label="dumber.chat" />
         <service android:name=".dumber.DumberSyncService" android:exported="false" android:foregroundServiceType="remoteMessaging" />
         <!-- ─── Activities ─── -->

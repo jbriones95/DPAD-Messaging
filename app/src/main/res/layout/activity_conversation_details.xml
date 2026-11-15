@@ -134,6 +134,7 @@
                 android:paddingStart="@dimen/padding_small"
                 android:paddingTop="@dimen/padding_small"
                 android:paddingBottom="@dimen/padding_small"
+                android:id="@+id/appearance_title"
                 android:text="@string/appearance"
                 android:textColor="@color/colorSecondary"
                 android:textSize="@dimen/text_size_meta"
@@ -180,6 +181,21 @@
                     android:textSize="@dimen/text_size_meta" />
 
             </LinearLayout>
+
+            <TextView
+                android:id="@+id/btn_group_actions"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/conversation_item_height"
+                android:background="@drawable/details_row_bg"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:gravity="center_vertical"
+                android:paddingStart="@dimen/padding_medium"
+                android:paddingEnd="@dimen/padding_medium"
+                android:text="@string/dumber_group_options"
+                android:textColor="@color/colorOnBackground"
+                android:textSize="@dimen/text_size_body"
+                android:visibility="gone" />
 
             <!-- Action: Rename conversation -->
             <TextView

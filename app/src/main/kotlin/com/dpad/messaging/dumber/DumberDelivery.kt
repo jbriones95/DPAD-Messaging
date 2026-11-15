@@ -1,5 +1,7 @@
 package com.dpad.messaging.dumber
 
+import chat.dumber.sdk.*
+
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
@@ -28,7 +30,6 @@ object DumberDelivery {
         val sim = DumberSubscriptions.selected(context, subscription)
         check(sim != null || !DumberAccount.connected(context)) { "Select an available SIM and allow SIM access before sending." }
         val account = DumberAccount.forSim(context, sim)
-        check(account != null || !DumberAccount.needsLegacyLink(context)) { "Link your existing dumber.chat account to a SIM in Settings before sending." }
         if (account == null) return@withContext false
         if (!DumberAccount.enabled(context, account)) return@withContext false
         val number = DumberCore.international(context, phone, subscription) ?: phone
@@ -63,9 +64,8 @@ object DumberDelivery {
                 } catch (e: CancellationException) { throw e }
                 catch (e: Exception) {
                     if (!pending.optBoolean("confirmed")) {
-                        if (e is DumberException && e.recipientUnavailable) {
+                        if (e is ChatException && e.recipientUnavailable) {
                             pending.put("recipient_unavailable", true)
-                            DumberDirectory.remember(context, pending.getString("account"), pending.getString("phone"), null)
                         }
                         pending.put("reason", e.message ?: "Encrypted send failed")
                         queue.save(pending)

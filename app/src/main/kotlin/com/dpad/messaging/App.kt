@@ -27,6 +27,7 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        com.dpad.messaging.dumber.SimRemovalUi.install(this)
         database = MessagesDatabase.getInstance(this)
         contactHelper = ContactHelper(this)
         Prefs.init(this)

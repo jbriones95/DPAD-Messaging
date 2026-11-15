@@ -732,6 +732,7 @@ dependencies = [
  "anyhow",
  "jni 0.21.1",
  "matrix-sdk",
+ "matrix-sdk-crypto",
  "matrix-sdk-store-encryption",
  "reqwest 0.12.28",
  "reqwest 0.13.5",

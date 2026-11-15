@@ -1,5 +1,7 @@
 package com.dpad.messaging.activities
 
+import com.dpad.messaging.dumber.*
+
 import android.content.Intent
 import android.os.Bundle
 import android.view.KeyEvent
@@ -48,6 +50,7 @@ class ArchivedConversationsActivity : BaseActivity() {
     override fun onResume() {
         super.onResume()
         applyAccent()
+        loadArchivedConversations()
     }
 
     private fun applyAccent() {
@@ -55,6 +58,9 @@ class ArchivedConversationsActivity : BaseActivity() {
     }
 
     private fun openThread(conversation: Conversation) {
+        conversation.group?.let { group ->
+            startActivity(Intent(this, DumberGroupActivity::class.java).putExtra("account", group.account).putExtra("room", group.room)); return
+        }
         val intent = Intent(this, ThreadActivity::class.java).apply {
             putExtra(ThreadActivity.EXTRA_THREAD_ID, conversation.threadId)
             putExtra(ThreadActivity.EXTRA_THREAD_TITLE, conversation.title)
@@ -69,11 +75,6 @@ class ArchivedConversationsActivity : BaseActivity() {
     private fun loadArchivedConversations() {
         lifecycleScope.launch {
             val archivedIds = Prefs.get().getArchivedThreadIds()
-            if (archivedIds.isEmpty()) {
-                adapter.submitList(emptyList())
-                binding.tvEmpty.visibility = View.VISIBLE
-                return@launch
-            }
             val archived = withContext(Dispatchers.IO) {
                 // Pass all archived IDs as "pinned" = none; pass archived IDs as archivedThreadIds=none
                 // so excluded filter is empty, but set includeOnly to the archived IDs.
@@ -81,7 +82,7 @@ class ArchivedConversationsActivity : BaseActivity() {
                     App.get().contactHelper,
                     pinnedThreadIds = Prefs.get().getPinnedThreadIds(),
                     archivedThreadIds = emptySet()   // don't exclude — we WANT archived ones
-                ).filter { it.threadId in archivedIds }
+                ).filter { it.threadId in archivedIds } + DumberGroupStore(this@ArchivedConversationsActivity).use { it.conversations(archived = true) }
             }
             adapter.submitList(archived)
             binding.tvEmpty.visibility = if (archived.isEmpty()) View.VISIBLE else View.GONE
@@ -92,7 +93,7 @@ class ArchivedConversationsActivity : BaseActivity() {
         val popup = PopupMenu(ThemeManager.popupMenuContext(this), anchor)
         popup.menu.add(0, 0, 0, getString(com.dpad.messaging.R.string.unarchive))
         popup.setOnMenuItemClickListener {
-            Prefs.get().setThreadArchived(conversation.threadId, false)
+            if (conversation.group != null) DumberGroupStore(this).use { it.flag(conversation.group!!, "archived", false) } else Prefs.get().setThreadArchived(conversation.threadId, false)
             loadArchivedConversations()
             true
         }

@@ -1,5 +1,7 @@
 package com.dpad.messaging.dumber
 
+import chat.dumber.sdk.*
+
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -28,7 +30,7 @@ class DumberConnectActivity: BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         selected = savedInstanceState?.getInt("sim", -1)
-            ?: DumberAccount.read(this).optJSONObject("verification")?.optInt("subscription", -1) ?: -1
+            ?: runCatching { DumberAccount.read(this).optJSONObject("verification")?.optInt("subscription", -1) }.getOrNull() ?: -1
         connecting = savedInstanceState?.getBoolean("connecting", false) ?: false
         draw()
     }
@@ -58,6 +60,11 @@ class DumberConnectActivity: BaseActivity() {
             override fun afterTextChanged(s: android.text.Editable?) {}
         })
         if(!DumberCore.available()) { status.text="This build does not include dumber.chat for this device.";return }
+        if(runCatching { DumberAccount.read(this) }.isFailure) {
+            status.text="Saved chat data could not be loaded."
+            button("Retry") { draw() }
+            return
+        }
         val missing = mutableListOf<String>()
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) missing.add(Manifest.permission.READ_PHONE_STATE)
         if (Build.VERSION.SDK_INT >= 26 && ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_NUMBERS) != PackageManager.PERMISSION_GRANTED) missing.add(Manifest.permission.READ_PHONE_NUMBERS)
@@ -77,13 +84,18 @@ class DumberConnectActivity: BaseActivity() {
                 ?.takeIf { it.isNotBlank() } ?: availableSim.number ?: availableSim.label
             numberButton(number, owner, availableSim).tag = "sim:${availableSim.id}"
         }
-        if (sims.isEmpty()) status.text = "No active SIMs available."
+        val linked = sims.mapNotNull { DumberAccount.forSim(this, it) }.toSet()
+        for (account in accounts.filter { DumberAccount.enabled(this, it) && it !in linked }) {
+            numberButton(DumberAccount.state(this, account).optString("phone"), account, null)
+                .tag = "account:$account"
+        }
+        if (sims.isEmpty()) status.text = "No active SIMs available. Existing chat connections remain active."
         val previous = focusedTag?.let { root.findViewWithTag<View>(it) }
         (previous ?: (0 until root.childCount).map { root.getChildAt(it) }
             .firstOrNull { it.isFocusable } ?: back).requestFocus()
     }
 
-    private fun numberButton(number: String, account: String?, sim: DumberSubscriptions.Sim): Button {
+    private fun numberButton(number: String, account: String?, sim: DumberSubscriptions.Sim?): Button {
         val connected = account != null && DumberAccount.enabled(this, account)
         return button("$number (${if (connected) "connected" else "disconnected"})") {
             val actions = if (connected) arrayOf("Disconnect", "Link web app") else arrayOf("Connect")
@@ -103,7 +115,7 @@ class DumberConnectActivity: BaseActivity() {
                             }.show()
                     } else if (account != null && DumberAccount.logoutPending(this, account)) {
                         status.text = "Waiting for disconnect to complete…"
-                    } else {
+                    } else if (sim != null) {
                         startConnecting(sim)
                     }
                 }.show()
@@ -136,7 +148,7 @@ class DumberConnectActivity: BaseActivity() {
             lifecycleScope.launch {
                 try { DumberVerification.begin(this@DumberConnectActivity,number,sim.id);status.text="Waiting for the verification SMS on ${sim.label}…" }
                 catch(e: CancellationException) { throw e }
-                catch(e: Exception) { status.text=if (e is DumberException && e.httpStatus == 426) "Update this app before connecting to dumber.chat." else "Could not request a code. Check the selected SIM and connection, then try again." }
+                catch(e: Exception) { status.text=if (e is ChatException && e.kind == ErrorKind.UPGRADE_REQUIRED) "Update this app before connecting to dumber.chat." else "Could not request a code. Check the selected SIM and connection, then try again." }
                 finally { connect.isEnabled=true }
             }
         }
@@ -157,17 +169,17 @@ class DumberConnectActivity: BaseActivity() {
                 if (!Regex("[0-9]{8}").matches(value)) { status.text = "Enter the eight-digit browser code."; return@setPositiveButton }
                 lifecycleScope.launch {
                     try {
-                        val request = DumberCore.request(this@DumberConnectActivity, "pairing_review", account).put("code", value)
-                        val reviewed = withContext(Dispatchers.IO) { DumberCore.call(request) }
+                        val client = DumberCore.client(this@DumberConnectActivity, account)
+                        val reviewed = withContext(Dispatchers.IO) { client.reviewPairing(value) }
                         androidx.appcompat.app.AlertDialog.Builder(this@DumberConnectActivity)
                             .setTitle("Approve browser for $number?")
-                            .setMessage("Code: $value\n${reviewed.getString("description")}")
+                            .setMessage("Code: $value\n${reviewed.description}")
                             .setNegativeButton("Cancel", null)
                             .setPositiveButton("Approve") { _, _ ->
                                 lifecycleScope.launch {
                                     try {
                                         // Use the reviewed session, not a session replaced while the dialog was open.
-                                        withContext(Dispatchers.IO) { DumberCore.call(request.put("command", "pairing_approve")) }
+                                        withContext(Dispatchers.IO) { client.approvePairing(value) }
                                         status.text = "Browser approved. Complete linking in the browser."
                                     } catch (e: CancellationException) { throw e }
                                     catch (e: Exception) { status.text = e.message ?: "Could not approve browser. Try again." }

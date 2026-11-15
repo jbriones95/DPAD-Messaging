@@ -1,5 +1,7 @@
 package com.dpad.messaging.dumber
 
+import chat.dumber.sdk.*
+
 import android.content.Context
 import androidx.work.*
 import org.json.JSONObject
@@ -19,7 +21,7 @@ object DumberVerification {
                 .put("started", System.currentTimeMillis()).put("expires", System.currentTimeMillis() + 300_000))
             it.remove("error")
         }
-        try { DumberCore.call(DumberCore.request(context, "request_code").put("phone", phone)) }
+        try { DumberCore.client(context).requestCode(phone) }
         catch (e: Exception) {
             DumberAccount.update(context) { if (it.optJSONObject("verification")?.optString("nonce") == nonce) it.remove("verification") }
             throw e
@@ -61,10 +63,10 @@ class DumberVerificationWorker(context: Context, params: WorkerParameters): Coro
         if (pending.optString("nonce") != nonce || System.currentTimeMillis() > pending.optLong("expires")) return@withContext Result.success()
         val code = pending.optString("code")
         if (code.isBlank()) return@withContext Result.success()
-        var verified: JSONObject? = null
+        var verified: Session? = null
         try {
             check(DumberSubscriptions.selected(applicationContext, pending.getInt("subscription")) != null) { "SIM unavailable" }
-            val session = DumberCore.call(DumberCore.request(applicationContext, "verify").put("phone", pending.getString("phone")).put("code", code))
+            val session = DumberCore.client(applicationContext).verify(pending.getString("phone"), code)
             verified = session
             val sim = DumberSubscriptions.selected(applicationContext, pending.getInt("subscription"))
             check(sim != null && DumberAccount.acceptVerification(applicationContext, nonce, session, sim)) { "SIM changed during verification" }
@@ -80,9 +82,9 @@ class DumberVerificationWorker(context: Context, params: WorkerParameters): Coro
         } finally {
             // Dispose of a verification session only if SIM validation prevented adopting it.
             verified?.let { session ->
-                val retained = DumberAccount.state(applicationContext, session.getString("user_id")).optJSONObject("session")
-                if (retained?.optString("access_token") != session.optString("access_token")) runCatching {
-                    DumberCore.call(DumberCore.request(applicationContext, "logout").put("session", session))
+                val retained = DumberAccount.session(applicationContext, session.accountId)
+                if (retained?.credentials != session.credentials) runCatching {
+                    DumberCore.client(session).logout()
                 }
             }
         }

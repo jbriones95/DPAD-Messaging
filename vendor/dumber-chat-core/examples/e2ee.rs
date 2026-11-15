@@ -2,6 +2,7 @@
 use anyhow::{ensure, Result};
 use dumber_chat_core::{Client, Session};
 use serde_json::{json, Value};
+mod support;
 use std::{path::PathBuf, time::Duration};
 fn main() -> Result<()> {
     let file = std::env::var("CHAT_TEST_SESSIONS")?;
@@ -11,12 +12,10 @@ fn main() -> Result<()> {
     let client = Client::new("https://nokings.chat")?.with_crypto_store(&root, password);
     let (a, b) = (&sessions[0], &sessions[1]);
     let a_wire = serde_json::to_value(a)?;
-    let b_wire = serde_json::to_value(b)?;
     let recipient_phone = b
         .phone()
         .map(str::to_owned)
-        .or_else(|| std::env::var("CHAT_TEST_RECIPIENT_PHONE").ok())
-        .ok_or_else(|| anyhow::anyhow!("Set CHAT_TEST_RECIPIENT_PHONE for legacy sessions"))?;
+        .ok_or_else(|| anyhow::anyhow!("Test session must include a phone number"))?;
     let initial = client.sync(a)?;
     if let Ok(body) = std::env::var("CHAT_EXPECT_MESSAGE") {
         ensure!(
@@ -26,17 +25,7 @@ fn main() -> Result<()> {
     }
     client.sync(b)?;
     let conversation = client.open_chat(a, &recipient_phone)?;
-    // Raw Matrix access here is intentional: verify the server stores ciphertext.
-    let raw_open: Value = serde_json::from_str(&dumber_chat_core::invoke(
-        &json!({
-            "command":"open_chat", "service":"https://nokings.chat", "session":a,
-            "store_path":root, "store_password":password, "user_id":b_wire["user_id"]
-        })
-        .to_string(),
-    ))?;
-    let room = raw_open["data"]["room_id"]
-        .as_str()
-        .ok_or_else(|| anyhow::anyhow!("{raw_open}"))?;
+    let room = support::room(a, &conversation.id)?;
     client.sync(b)?;
     client.join(b, &conversation.id)?;
     client.sync(b)?;

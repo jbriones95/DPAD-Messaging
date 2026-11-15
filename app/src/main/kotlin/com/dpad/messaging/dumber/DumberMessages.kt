@@ -1,5 +1,7 @@
 package com.dpad.messaging.dumber
 
+import chat.dumber.sdk.*
+
 import android.content.ContentValues
 import android.content.Context
 import android.provider.Telephony
@@ -12,15 +14,12 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.greenrobot.eventbus.EventBus
-import org.json.JSONArray
 import org.json.JSONObject
 
 object DumberMessages {
     private val storeLock = Mutex()
     private val sendLock = Mutex()
     private val syncLocks = java.util.concurrent.ConcurrentHashMap<String, Mutex>()
-    private val phoneCache = java.util.concurrent.ConcurrentHashMap<String,String>()
-    private val peerCache = java.util.concurrent.ConcurrentHashMap<String,String>()
 
     suspend fun sendKnown(context: Context, pending: JSONObject) = withContext(Dispatchers.IO) {
         val account = pending.getString("account")
@@ -33,13 +32,13 @@ object DumberMessages {
         val scheduledId = if (pending.has("scheduled")) pending.getLong("scheduled") else null
         sendLock.withLock {
             check(DumberAccount.enabled(context, account)) { "Reconnect dumber.chat to retry encrypted delivery" }
-            val request = DumberCore.request(context, "open_chat", account)
-            val own = request.getJSONObject("session").getString("user_id")
+            val client = DumberCore.client(context, account)
+            val own = requireNotNull(DumberAccount.session(context, account)).accountId
             check(own == pending.getString("account")) { "Sign in to the original account to retry" }
             val found = pending.getString("peer")
             check(found != own) { "Choose another recipient" }
             val room = pending.optString("room").ifBlank {
-                DumberCore.call(JSONObject(request.toString()).put("user_id",found)).getString("room_id").also {
+                client.openChat(recipient, cachedOnly=true).id.also {
                     pending.put("room", it)
                     DumberOutbox(context).use { queue -> queue.save(pending) }
                 }
@@ -49,19 +48,17 @@ object DumberMessages {
             DumberOutbox(context).use { it.save(pending) }
             check(DumberAccount.enabled(context, account)) { "Reconnect dumber.chat to retry encrypted delivery" }
             val result = try {
-                DumberCore.call(JSONObject(request.toString()).put("command", "send").put("room_id",room).put("body",body).put("transaction_id",pending.getString("id")))
-            } catch (e: DumberException) {
+                client.sendText(room, body, pending.getString("id"))
+            } catch (e: ChatException) {
                 // A definite rejection proves only this attempt was not accepted.
                 if (e.recipientUnavailable && !previouslyUncertain) pending.put("uncertain", false)
                 throw e
             }
             // A successful response from this SDK confirms an encrypted Matrix event.
-            check(result.optBoolean("e2ee")) { "Encryption confirmation missing" }
+            check(result.encrypted) { "Encryption confirmation missing" }
             pending.put("confirmed", true)
             runCatching { DumberOutbox(context).use { it.save(pending) } }
-            val event = JSONObject().put("event_id",result.getString("event_id")).put("type","m.room.message")
-                .put("sender",own).put("e2ee",true).put("origin_server_ts",System.currentTimeMillis())
-                .put("content",JSONObject().put("msgtype","m.text").put("body",body))
+            val event = outgoing(context, account, result.eventId, body, pending.getString("id"))
             // From here on, never downgrade to SMS due to a local storage/notification error.
             runCatching {
                 storeLock.withLock {
@@ -76,78 +73,66 @@ object DumberMessages {
         }
     }
 
-    suspend fun sync(context: Context, account: String = DumberDirectory.account(context), call: (JSONObject) -> JSONObject = DumberCore::call) = withContext(Dispatchers.IO) {
+    fun outgoing(context: Context, account: String, id: String, body: String, transaction: String): Message =
+        Message(id, Contact(account, DumberAccount.state(context,account).optString("phone")), System.currentTimeMillis(), MessageContent.Text(body), true, transaction)
+
+    suspend fun sync(context: Context, account: String, client: ChatApi = DumberCore.client(context,account)) = withContext(Dispatchers.IO) {
         syncLocks.getOrPut(account) { Mutex() }.withLock {
             if (!DumberAccount.enabled(context, account)) return@withLock
-            val own = DumberAccount.state(context, account).getJSONObject("session").getString("user_id")
             val cutoff = DumberAccount.state(context, account).getLong("connected_at")
             DumberInbox(context, account).use { queue ->
-                val retry = JSONArray()
-                queue.pending().forEach { (room,event) -> event.optJSONObject("encrypted_event")?.let { retry.put(JSONObject().put("room_id",room).put("event",it)) } }
-                val response = call(DumberCore.request(context,"sync", account).put("retry_events",retry))
+                val response = client.sync()
                 if (!DumberAccount.enabled(context, account)) return@withLock
-                val updates = response.optJSONObject("rooms") ?: JSONObject()
-                updates.optJSONObject("invite")?.let { invitations ->
-                    for (room in invitations.keys()) {
-                        val events = invitations.getJSONObject(room).optJSONObject("invite_state")?.optJSONArray("events") ?: continue
-                        for (i in 0 until events.length()) {
-                            val event = events.getJSONObject(i)
-                            if (event.optString("type") != "m.room.member" || event.optString("state_key") != own) continue
-                            val inviter = event.optString("sender")
-                            val phone = resolve(context,inviter,account) ?: continue
-                            if (SmsWhitelistManager.check(context,phone).allowed) {
-                                DumberCore.call(DumberCore.request(context,"join", account).put("room_id",room))
-                                peerCache["$account|$room"] = inviter
-                            }
-                        }
+                val conversations = client.conversations().associateBy { it.id }.toMutableMap()
+                for(update in response.conversations) {
+                    val info = update.conversation
+                    val id = info.id
+                    conversations[id] = info
+                    if(info.kind == ConversationKind.DIRECT && info.membership == Membership.INVITED) {
+                        val phone = info.participants.singleOrNull()?.phone
+                        if(phone != null && SmsWhitelistManager.check(context,phone).allowed) client.join(id)
                     }
+                    update.messages.filter { it.timestampMs >= cutoff }.forEach { queue.enqueue(id,it) }
                 }
-                updates.optJSONObject("join")?.let { joined ->
-                    for (room in joined.keys()) {
-                        val update = joined.getJSONObject(room)
-                        for (part in listOf("state","timeline")) {
-                            val events = update.optJSONObject(part)?.optJSONArray("events") ?: continue
-                            for (i in 0 until events.length()) {
-                                val event = events.getJSONObject(i)
-                                if (event.optString("type") == "m.room.member" && event.optString("state_key") != own && event.optJSONObject("content")?.optString("membership") in listOf("join","invite")) peerCache["$account|$room"] = event.getString("state_key")
-                                if (event.optLong("origin_server_ts") >= cutoff) queue.enqueue(room,event)
-                            }
-                        }
+                // The core's cursor may already have consumed an invitation before
+                // an app update or a local write failure. Reconcile its durable
+                // metadata too; an empty incremental sync must not hide invitations.
+                for ((id, info) in conversations) {
+                    if (info.kind == ConversationKind.GROUP) DumberGroups.observe(context, GroupReference(account,id), info)
+                }
+                for((id,storedEvent) in queue.pending()) {
+                    if(!storedEvent.encrypted) continue
+                    when(storedEvent.content) {
+                        MessageContent.UnableToDecrypt -> continue
+                        is MessageContent.Text -> Unit
+                        else -> { queue.done(storedEvent.eventId); continue }
                     }
-                }
-                // Native sync catches up available messages internally. There is
-                // no public history command and no app-owned server cursor.
-                for ((room,event) in queue.pending()) {
-                    if (!event.optBoolean("e2ee")) continue // retry decryption when its key arrives
-                    if (event.optString("type") != "m.room.message" || event.optJSONObject("content")?.optString("msgtype") != "m.text") { queue.done(event.getString("event_id")); continue }
-                    val outgoing = event.optString("sender") == own
-                    val peer = if(outgoing) peerCache["$account|$room"] else event.optString("sender")
-                    if(peer.isNullOrEmpty()) continue
-                    val phone = resolve(context,peer,account)
-                    if (phone == null) { queue.done(event.getString("event_id")); continue }
-                    storeLock.withLock { store(context,queue,room,event,phone,!outgoing, account, subscription = DumberAccount.subscription(context, account)) }
+                    val info = conversations[id] ?: continue
+                    val sender = if(storedEvent.sender.phone == null) info.members.firstOrNull { it.contact.id == storedEvent.sender.id }?.contact ?: storedEvent.sender else storedEvent.sender
+                    val event = storedEvent.copy(sender=sender)
+                    if(info.kind == ConversationKind.GROUP) {
+                        if(DumberGroups.received(context,GroupReference(account,id),event)) queue.done(event.eventId)
+                        continue
+                    }
+                    if(info.kind != ConversationKind.DIRECT) continue
+                    val outgoing = sender.id == account
+                    val peer = if(outgoing) info.participants.singleOrNull() else sender
+                    val phone = peer?.phone ?: continue
+                    storeLock.withLock { store(context,queue,id,event,phone,!outgoing,account,subscription=DumberAccount.subscription(context,account)) }
                 }
             }
         }
     }
-    private fun resolve(context: Context, user: String, account: String): String? {
-        phoneCache["$account|$user"]?.let { DumberDirectory.remember(context, account, it, user); return it }
-        val phone = DumberCore.call(DumberCore.request(context,"resolve", account).put("user_ids",JSONArray().put(user)))
-            .getJSONObject("phones").optString(user).takeIf { it.isNotBlank() } ?: return null
-        phoneCache["$account|$user"] = phone
-        DumberDirectory.remember(context, account, phone, user)
-        return phone
-    }
-    private suspend fun store(context: Context, queue: DumberInbox, room: String, event: JSONObject, phone: String, incoming: Boolean, account: String, requestedThread: Long = -1, subscription: Int = -1) {
-        val id = event.getString("event_id")
+    private suspend fun store(context: Context, queue: DumberInbox, room: String, event: Message, phone: String, incoming: Boolean, account: String, requestedThread: Long = -1, subscription: Int = -1) {
+        val id = event.eventId
         if(queue.handled(id)) return
         if (!SmsWhitelistManager.check(context,phone).allowed) { queue.done(id); return }
-        val marker = eventMarker(context, account, room, id)
+        val marker = eventMarker(account, room, id)
         val existing = context.contentResolver.query(Telephony.Sms.CONTENT_URI,arrayOf(Telephony.Sms._ID),"${Telephony.Sms.SERVICE_CENTER} = ?",arrayOf(marker),null)?.use { it.moveToFirst() } ?: false
         if(existing) { queue.done(id); return }
         val thread = if(requestedThread > 0) requestedThread else Telephony.Threads.getOrCreateThreadId(context,phone)
-        val body = event.getJSONObject("content").getString("body")
-        val timestamp = event.getLong("origin_server_ts")
+        val body = (event.content as MessageContent.Text).body
+        val timestamp = event.timestampMs
         val values = ContentValues().apply {
             put(Telephony.Sms.ADDRESS,phone); put(Telephony.Sms.BODY,body); put(Telephony.Sms.THREAD_ID,thread)
             put(Telephony.Sms.DATE,timestamp);put(Telephony.Sms.DATE_SENT,timestamp)
@@ -164,11 +149,8 @@ object DumberMessages {
             if(!blocked) runCatching { NotificationHelper.showIncomingNotification(context,thread,App.get().contactHelper.getDisplayName(phone),phone,body) }
         }
     }
-    internal fun eventMarker(context: Context, account: String, room: String, event: String): String {
-        // Keep existing markers for the legacy account so an upgrade cannot duplicate its history.
-        val owner = if (DumberAccount.storeName(context, account) == "dumber-crypto") "" else "$account/"
-        return DumberProtocol.MARKER + owner + room + "/" + event
-    }
+    internal fun eventMarker(account: String, room: String, event: String): String =
+        DumberProtocol.MARKER + account + "/" + room + "/" + event
     private fun publish(thread: Long) {
         MessageCache.invalidate(thread)
         EventBus.getDefault().post(RefreshConversations())

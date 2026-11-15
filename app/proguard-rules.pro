@@ -39,6 +39,3 @@
 -keep class com.klinker.android.send_message.** { *; }
 -keep class com.google.android.mms.** { *; }
 -keep class com.google.android.mms.pdu_alt.** { *; }
-
-# JNI name is part of the Rust library ABI.
--keep class chat.dumber.app.NativeCore { *; }

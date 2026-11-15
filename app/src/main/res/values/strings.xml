@@ -331,7 +331,6 @@
     <string name="dumber_sms_confirmation">Send this message as an unencrypted SMS? Carrier charges may apply.</string>
     <string name="dumber_sms_uncertain">Encrypted delivery could not be confirmed. The recipient may already have received it. Sending an unencrypted SMS may deliver a duplicate. Carrier charges may apply.</string>
     <string name="dumber_status_sim_unconnected">SMS · SIM not connected</string>
-    <string name="dumber_status_link_sim">Link dumber.chat account to SIM</string>
     <string name="dumber_recipient_unavailable">Recipient no longer available on dumber.chat</string>
     <string name="dumber_recipient_unavailable_sms">Send this message as regular SMS?</string>
 </resources>

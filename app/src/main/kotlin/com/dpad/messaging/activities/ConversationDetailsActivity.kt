@@ -42,6 +42,7 @@ class ConversationDetailsActivity : BaseActivity() {
     private val participantAddViews = mutableListOf<TextView>()
     private val participantCallViews = mutableListOf<ImageButton>()
 
+    private var groupDetails: com.dpad.messaging.dumber.DumberGroupDetails? = null
     private var threadId: Long = -1L
     private var currentTitle: String = ""
     private var colorTargetNumber: String = ""
@@ -51,6 +52,33 @@ class ConversationDetailsActivity : BaseActivity() {
         ThemeManager.applyAccentColor(this)
         binding = ActivityConversationDetailsBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        val account = intent.getStringExtra("account")
+        val room = intent.getStringExtra("room")
+        if (account != null && room != null) {
+            binding.btnBack.setOnClickListener { finish() }
+            groupDetails = com.dpad.messaging.dumber.DumberGroupDetails(
+                this, binding, com.dpad.messaging.dumber.GroupReference(account, room)
+            ) { info ->
+                val labels = info.members.associate { member ->
+                    member.contact.id to
+                        "${com.dpad.messaging.dumber.DumberGroups.label(member)} · ${member.membership.name.lowercase()}${if (member.admin) " · admin" else ""}"
+                }
+                val unknown = info.members.filter { it.contact.phone == null }.map { it.contact.id }.toSet()
+                val phones = info.members.mapNotNull { member -> member.contact.phone?.let { member.contact.id to it } }.toMap()
+                populateParticipants(labels.keys.toList(), "", labels, unknown, phones)
+                val firstAction = binding.btnGroupActions
+                binding.rowColor.visibility = View.GONE
+                binding.appearanceTitle.visibility = View.GONE
+                participantNameViews.lastOrNull()?.nextFocusDownId = firstAction.id
+                participantCallViews.lastOrNull()?.nextFocusDownId = firstAction.id
+                participantAddViews.lastOrNull()?.nextFocusDownId = firstAction.id
+                firstAction.nextFocusUpId = participantNameViews.lastOrNull()?.id ?: binding.btnBack.id
+                if (participantNameViews.isEmpty()) binding.btnBack.nextFocusDownId = firstAction.id
+            }
+            binding.btnBack.post { binding.btnBack.requestFocus() }
+            return
+        }
 
         threadId     = intent.getLongExtra(ThreadActivity.EXTRA_THREAD_ID, -1L)
         currentTitle = intent.getStringExtra(ThreadActivity.EXTRA_THREAD_TITLE) ?: ""
@@ -86,7 +114,7 @@ class ConversationDetailsActivity : BaseActivity() {
         binding.btnBack.post { binding.btnBack.requestFocus() }
     }
 
-    private fun populateParticipants(participants: List<String>, phoneNumber: String) {
+    private fun populateParticipants(participants: List<String>, phoneNumber: String, labels: Map<String, String> = emptyMap(), unknown: Set<String> = emptySet(), phoneNumbers: Map<String, String> = emptyMap()) {
         val container = binding.participantList
         container.removeAllViews()
         participantNameViews.clear()
@@ -115,9 +143,11 @@ class ConversationDetailsActivity : BaseActivity() {
         }
 
         val participantFocusViews = mutableListOf<Pair<View, View>>()
-        numbers.forEach { num ->
-            val info = App.get().contactHelper.resolve(num)
-            val display = info?.displayName ?: num
+        numbers.forEach { key ->
+            val num = phoneNumbers[key] ?: key
+            val hasNumber = key !in unknown
+            val info = if (hasNumber) App.get().contactHelper.resolve(num) else null
+            val display = labels[key] ?: info?.displayName ?: num
 
             val row = LinearLayout(this).apply {
                 id = View.generateViewId()
@@ -152,6 +182,7 @@ class ConversationDetailsActivity : BaseActivity() {
                 isFocusable = true
                 isFocusableInTouchMode = true
                 setOnClickListener {
+                    if (!hasNumber) return@setOnClickListener
                     val clipboard = getSystemService(ClipboardManager::class.java)
                     clipboard.setPrimaryClip(ClipData.newPlainText("phone", num))
                     Toast.makeText(this@ConversationDetailsActivity, getString(R.string.message_copied), Toast.LENGTH_SHORT).show()
@@ -192,7 +223,7 @@ class ConversationDetailsActivity : BaseActivity() {
                 participantFocusViews.add(tv to callButton)
             }
 
-            if (info == null) {
+            if (info == null && hasNumber) {
                 // Unknown number — show Add Contact control
                 val addId = View.generateViewId()
                 val add = TextView(this).apply {
@@ -223,8 +254,10 @@ class ConversationDetailsActivity : BaseActivity() {
                 participantFocusViews.add(tv to add)
             }
 
+            if (!hasNumber) participantFocusViews.add(tv to tv)
+
             // Accessibility on name
-            tv.contentDescription = if (info != null) {
+            tv.contentDescription = if (info != null || !hasNumber) {
                 getString(R.string.participants) + ": " + display
             } else {
                 getString(R.string.participants) + ": " + num + ", " + getString(R.string.add_recipient)
@@ -251,6 +284,7 @@ class ConversationDetailsActivity : BaseActivity() {
 
     override fun onResume() {
         super.onResume()
+        groupDetails?.reload()
         applyAccent()
     }
 

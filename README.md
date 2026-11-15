@@ -131,7 +131,7 @@ MIT
 
 ## Optional dumber.chat messaging
 
-Settings → Messaging → **Connect dumber.chat** enables encrypted one-to-one text
-messages with registered contacts, with explicit confirmation before carrier SMS fallback. Native
-build requirements, behavior and tests are described in
+Settings → Messaging → **Connect dumber.chat** enables encrypted one-to-one and group text
+messages with registered contacts. Direct chats offer explicitly confirmed SMS fallback;
+encrypted groups never fall back to SMS/MMS. Native build requirements, behavior and tests are described in
 [docs/dumber-chat.md](docs/dumber-chat.md).

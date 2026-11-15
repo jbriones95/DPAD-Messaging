@@ -18,12 +18,16 @@ reported number cannot silently inherit an existing binding. Re-verify to link a
 replacement SIM. Detection cannot establish number ownership; SMS verification
 remains authoritative.
 
-Existing installations retain their original account, encryption store, inbox,
-and pending messages. An account without an active SIM binding is disconnected once telephony settles, including legacy accounts that have never been linked. SMS verification is required to connect it again. Linking it preserves its existing
-Matrix device and encryption keys. New accounts receive separate sessions, crypto
-stores, passwords, inboxes, recipient caches, and lookup retry timers. Account
-state is encrypted with an Android Keystore key; WorkManager stores only a request
-identifier.
+When a linked SIM disappears and telephony settles, the app asks **Keep connection**
+or **Deregister**. Reception remains active until the user explicitly deregisters.
+Keeping the connection is remembered across restarts; after the SIM returns, a new
+removal asks again. A background notification opens this choice when the app is
+not visible. A replacement SIM does not inherit the original account's binding.
+SMS verification is required to reconnect after choosing to deregister. Reverification installs a new
+session and crypto store while retaining local message history. Accounts receive
+separate sessions, crypto stores, passwords, inboxes, recipient caches, and lookup
+retry timers. Account state is encrypted with an Android Keystore key;
+WorkManager stores only a request identifier.
 
 The conversation window shows encrypted availability before the user sends a
 message. The main list and contact suggestions do not query the directory or
@@ -38,9 +42,9 @@ is respected across conversations. No address-book upload takes place.
 
 Sending to a known recipient creates/reuses a Matrix room and sends an encrypted
 message without another phone lookup. The SDK verifies encryption before sending.
-Successful messages retain the existing per-message **encrypted** label. Groups
-and attachments use the existing carrier implementation and the composer status
-reflects that. MDM filtering still applies to every transport.
+Successful messages retain the existing per-message **encrypted** label. Carrier
+groups and attachments use the existing carrier implementation. Encrypted groups
+use the shared chat UI with app-owned encrypted storage described below. MDM filtering still applies to every transport.
 
 Failed encrypted sends and sends with unknown availability stay in an app-private
 AES-GCM-encrypted SQLite outbox. The conversation's Unsent button provides Retry
@@ -69,8 +73,7 @@ message body never determines the label. An encrypted private pending-event queu
 and handled-event tombstones support decryption retries and prevent deleted texts
 from reappearing after a full sync. Native `sync` internally catches up timeline
 gaps using messages still retained by the server; the app does not call `history`
-or keep server pagination cursors. The inbox v2 migration drops only the obsolete
-cursor table, preserving pending events and handled-event tombstones.
+or keep server pagination cursors.
 
 The server has a seven-day retention policy with periodic purging. Messages not
 fetched in time may be lost. Received messages stay in the local SMS database
@@ -84,10 +87,9 @@ or device verification management.
 ## Build
 
 The Rust source in `vendor/dumber-chat-core` is a local source snapshot dated
-2026-10-20 from `dumber.chat/crates/chat-core`. `UPSTREAM.json` records source
-checksums. It includes the typed Rust API and uses the supported legacy JSON/JNI
-bridge for Android. Login, account state, encrypted stores, and send requests
-remain compatible. Update the snapshot deliberately when updating the library.
+2026-11-15 from the current local `dumber.chat/crates/chat-core` working tree. `UPSTREAM.json` records source
+checksums. Android uses the version-2 bridge over the protocol-independent Rust
+API. Update the snapshot deliberately when updating the library.
 
 Requirements: JDK 17, Android SDK 34, Rust 1.96 or later, and Android NDK
 30.0.16248370 (or set `ANDROID_NDK_HOME`). Gradle's `preBuild` builds the native
@@ -148,12 +150,10 @@ conversation-only discovery, unavailable-engine handling, durable pending sends,
 and stable transaction IDs for scheduled retries. Debug, instrumentation, and
 minified release APKs built successfully. The same three existing release lint
 errors remain. No device was connected for this update, so its on-device and live
-Synapse round-trip checks have not been rerun. Roll out the updated client before
-enforcing the server's daily quota; legacy clients look up every send and may
-silently fall back to SMS when that request fails.
+Synapse round-trip checks have not been rerun.
 
 Dual-SIM update validation: all 56 JVM tests passed, including independent SIM
-routing and lookup backoff, legacy account linking, separate crypto stores and
+routing and lookup backoff, SIM account linking, separate crypto stores and
 inboxes, verification nonce/subscription/card checks, and pending-send identity
 preservation. Debug, instrumentation and minified release APKs built successfully.
 The five device checks for JNI, encrypted queue storage, migrations and message
@@ -170,3 +170,99 @@ outbox. Background sends notify instead of falling back automatically. Ordinary
 403/network failures do not demote availability. Historic sync and reverse
 resolution cannot override a negative result; a successful lookup can. A prior
 ambiguous send still shows the duplicate-delivery warning.
+
+## Encrypted groups
+
+Creation and reception are enabled by default. Choose **New encrypted group**
+from the New message button. A build can opt out of creation with
+`-PdumberGroupCreation=false`. Participants need group-capable clients.
+
+Choose the sending account and a name. You can create an empty group and invite
+people later, or select participants with the same recipient chips, contact
+search and system contact picker used by regular groups.
+Use international numbers, including country codes. Creation
+errors retain the name, participants and operation ID; **Restore unfinished
+creation** restores those inputs for a safe retry. Do not change recipients on an
+unresolved creation. All phone lookups complete before invitations are created.
+
+Invitations appear in the same conversation list and require Accept or Decline.
+Group texts show sender labels and remain in a private encrypted local database,
+not the SMS/MMS provider. Unknown sender labels are retried without discarding
+messages. Groups never use carrier fallback. Failed sends offer Retry encrypted
+and Discard; retries retain the account, room and transaction ID. Outgoing policy
+checks cover all current recipients and require their identities to resolve.
+
+The timeline uses `activity_thread`, `ThreadAdapter` and `ThreadItem`, so bubbles,
+date separators, contact colors and DPAD navigation share the regular chat UI.
+Only invitation buttons, encryption/account status and encrypted retry controls
+are added. The composer respects the API's current send capability.
+`ConversationDetailsActivity` also renders group participants with its regular
+copy, dial and add-contact controls, plus membership/admin labels and encrypted
+group actions. Unsupported attachment and scheduling controls are hidden.
+
+Details offers participants, mute, archive, pin, local history deletion and leave.
+Admins can also rename, invite/remove, or appoint an admin. The last admin may
+choose a successor before leaving or leave without assigning one. Confirmation of
+an admin grant precedes leaving. Creator privileges can remain at Matrix protocol
+level. New members receive messages from joining onward; leaving or removal keeps
+local history and disables sending. Clearing local history does not leave a room.
+Deleting messages retains tombstones so a later sync cannot resurrect them.
+
+Groups keep their original account, including on dual-SIM devices. Account
+revocation/disconnection blocks sends; reconnecting does not discard local group
+history. Existing carrier groups and direct encrypted SMS threads are unchanged.
+Group attachments, scheduling and notification replies are not implemented.
+
+
+## Typed Kotlin API
+
+DPAD compiles the shared binding from
+`vendor/dumber-chat-core/bindings/kotlin/src/main/kotlin`. Application operations
+use `ChatApi` methods and Kotlin models, including typed membership, message
+content, sessions, and error categories. JSON request construction and response
+parsing live inside the binding. `DumberCore` only creates account-scoped clients
+and handles Android phone-number normalization.
+
+`ChatStorage` provides opaque persistence codecs for sessions, conversations, and
+messages. DPAD retains ownership of history, pending sends, deletion tombstones,
+SIM bindings, and UI. Its existing JSON for app-owned settings and outbox records
+is local storage, not the Rust API. Recipient availability caches, backoff,
+identity resolution, Matrix events, and decryption retries remain in Rust.
+
+The old app-owned `NativeCore` and `DumberCore.call/request` interfaces are gone.
+Ship the Kotlin source and native library from the same vendored snapshot; the
+private JNI class is now `chat.dumber.sdk.NativeBridge`. The shared consumer rules
+preserve that symbol in release builds. No local migration or compatibility layer
+is supplied. Tests inject typed `ChatApi` fakes, and the shared binding tests verify
+serialization separately. Device tests use the typed binding; raw server
+ciphertext inspection is confined to the opt-in end-to-end test.
+
+## API and shared group UI validation (2026-11-15)
+
+The snapshot includes the current local core changes on top of published revision
+`4719cdcf184eb1476ddc7545bcd24b5b6a7771a4` (verified against GitHub). The Kotlin
+binding and Rust native library come from that same snapshot. The standalone lock
+file includes the core's existing crypto dependencies without changing versions.
+
+All 85 JVM tests and 32 Rust core tests passed. Coverage includes creator-only
+groups, creation retry IDs, send permissions, durable send retries, invitation
+acceptance policy, room/account isolation, deletion tombstones, shared timeline
+rendering, sender labels and encryption-label recycling. Debug, instrumentation
+and minified release APKs were built with the ARM64 native library. The shared
+attachment RecyclerView now allows content-dependent sizing, resolving the prior
+release lint findings. No connected device was available; live multi-account
+Synapse delivery and physical DPAD navigation were not rerun.
+
+### Invitation visibility fix (2026-11-15)
+
+Invitations now receive a local receipt timestamp, unread badge and notification.
+The timestamp is assigned once, so routine syncs do not continually reorder or
+re-alert the invitation. Opening it clears its pending notification. A fresh
+invitation after leaving resurfaces the group; archived/muted invitations retain
+those choices during repair. Sync reconciles the core's cached group metadata as
+well as new updates, recovering invitations consumed by an earlier app version.
+All 88 JVM tests pass, including legacy-invitation repair and notification deduplication.
+The fix was installed on the affected phone without clearing app data. Its
+previously stored invitation appeared first in the conversation list with one
+unread item and an active invitation notification; membership remained invited.
+The minified release build also passed.

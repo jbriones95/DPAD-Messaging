@@ -56,10 +56,12 @@ fn now_ms() -> u64 {
 
 pub(crate) struct EncryptedClient {
     client: MatrixClient,
+    first_refresh: std::sync::atomic::AtomicBool,
     sync_lock: tokio::sync::Mutex<()>,
     pending: Mutex<Vec<Value>>,
     pub(crate) address_lock: Mutex<()>,
     pub(crate) typed_sync_lock: Mutex<()>,
+    pub(crate) discovery_lock: Mutex<()>,
     address_cipher: matrix_sdk_store_encryption::StoreCipher,
     password_hash: [u8; 32],
 }
@@ -120,14 +122,15 @@ pub(crate) fn client(
     let address_cipher = address_cipher(&sdk, password)?;
     let client = Arc::new(EncryptedClient {
         client: sdk,
+        first_refresh: std::sync::atomic::AtomicBool::new(true),
         sync_lock: Default::default(),
         pending: Default::default(),
         address_lock: Default::default(),
         typed_sync_lock: Default::default(),
+        discovery_lock: Default::default(),
         address_cipher,
         password_hash: Sha256::digest(password.as_bytes()).into(),
     });
-    runtime().block_on(client.refresh(true, 0))?;
     clients.insert(path, client.clone());
     Ok(client)
 }
@@ -179,10 +182,12 @@ pub(crate) fn offline_test_client(
     let address_cipher = address_cipher(&sdk, password)?;
     let client = Arc::new(EncryptedClient {
         client: sdk,
+        first_refresh: std::sync::atomic::AtomicBool::new(true),
         sync_lock: Default::default(),
         pending: Default::default(),
         address_lock: Default::default(),
         typed_sync_lock: Default::default(),
+        discovery_lock: Default::default(),
         address_cipher,
         password_hash: Sha256::digest(password.as_bytes()).into(),
     });
@@ -267,12 +272,18 @@ impl EncryptedClient {
         let _guard = self.sync_lock.lock().await;
         let mut catchup = self.load_catchup().await?;
         let mut settings = SyncSettings::default().timeout(Duration::from_secs(timeout));
-        if initial {
+        if initial
+            || self
+                .first_refresh
+                .load(std::sync::atomic::Ordering::Relaxed)
+        {
             // Refresh room membership while retaining the SDK's delivery cursor.
             // A restart must not deliberately request an initial history replay.
             settings = settings.full_state(true);
         }
         let sync = self.client.sync_once(settings).await?;
+        self.first_refresh
+            .store(false, std::sync::atomic::Ordering::Relaxed);
         let mut result =
             json!({"next_batch":sync.next_batch,"rooms":{"join":{},"invite":{},"leave":{}}});
         for (id, update) in sync.rooms.joined {
@@ -381,6 +392,16 @@ impl EncryptedClient {
 
     pub fn send(&self, id: &str, body: &str, txn: &str) -> Result<Value> {
         runtime().block_on(async {
+            // Observe membership changes before selecting/sharing the next group session.
+            // This also retains the received batch for the application's next sync.
+            if self
+                .room(id)
+                .await?
+                .room_type()
+                .is_some_and(|t| t.as_str() == crate::groups::GROUP_TYPE)
+            {
+                self.refresh(false, 0).await?;
+            }
             let room = self.ensure_encrypted(id).await?;
             let txn: matrix_sdk::ruma::OwnedTransactionId = txn.into();
             let response = room
@@ -389,6 +410,17 @@ impl EncryptedClient {
                 .await
                 .map_err(send_error)?;
             Ok(json!({"event_id":response.response.event_id,"e2ee":true}))
+        })
+    }
+
+    pub(crate) fn send_call(&self, id: &str, kind: &str, content: Value, txn: &str) -> Result<()> {
+        runtime().block_on(async {
+            let room = self.ensure_encrypted(id).await?;
+            room.send_raw(kind, content)
+                .with_transaction_id(txn.into())
+                .await
+                .map_err(send_error)?;
+            Ok(())
         })
     }
 
@@ -475,6 +507,41 @@ impl EncryptedClient {
         })
     }
 
+    /// Read durable SDK state without a network request (including stripped invites).
+    pub(crate) fn cached_room_state(&self, id: &str) -> Result<Vec<Value>> {
+        runtime().block_on(async {
+            use matrix_sdk::{
+                deserialized_responses::RawAnySyncOrStrippedState, ruma::events::StateEventType,
+            };
+            let id = RoomId::parse(id)?;
+            let Some(room) = self.client.get_room(&id) else {
+                return Ok(Vec::new());
+            };
+            let mut result = Vec::new();
+            for kind in [
+                StateEventType::RoomCreate,
+                StateEventType::RoomName,
+                StateEventType::RoomPowerLevels,
+                StateEventType::RoomMember,
+            ] {
+                for event in room.get_state_events(kind).await? {
+                    let value = match event {
+                        RawAnySyncOrStrippedState::Sync(raw) => {
+                            serde_json::from_str(raw.json().get())?
+                        }
+                        RawAnySyncOrStrippedState::Stripped(raw) => {
+                            serde_json::from_str(raw.json().get())?
+                        }
+                    };
+                    result.push(value);
+                }
+            }
+            Ok(result)
+        })
+    }
+
+    /// Resolve a direct room using the SDK's durable membership, even when a
+    /// resumed /sync contains only timeline deltas (or no new events at all).
     pub fn enable(&self, id: &str) -> Result<()> {
         runtime().block_on(self.ensure_encrypted(id))?;
         Ok(())
@@ -534,9 +601,10 @@ mod recipient_error_tests {
     fn only_explicit_server_rejection_is_recipient_unavailable() {
         let error = send_error(sdk_error(403, crate::RECIPIENT_UNAVAILABLE));
         assert!(error.is::<crate::RecipientUnavailable>());
-        let json = crate::error_response(&error);
-        assert_eq!(json["http_status"], 403);
-        assert_eq!(json["errcode"], crate::RECIPIENT_UNAVAILABLE);
+        assert_eq!(
+            crate::Failure::from_error(&error).kind,
+            crate::ErrorKind::RecipientUnavailable
+        );
         for (status, code) in [
             (403, "M_FORBIDDEN"),
             (401, "M_UNKNOWN_TOKEN"),
@@ -545,7 +613,10 @@ mod recipient_error_tests {
         ] {
             let error = send_error(sdk_error(status, code));
             assert!(!error.is::<crate::RecipientUnavailable>());
-            assert!(crate::error_response(&error).get("errcode").is_none());
+            assert_ne!(
+                crate::Failure::from_error(&error).kind,
+                crate::ErrorKind::RecipientUnavailable
+            );
         }
     }
 }

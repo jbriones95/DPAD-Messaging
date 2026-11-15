@@ -1,17 +1,34 @@
 {
   "source": "dumber.chat/crates/chat-core",
-  "snapshot_date": "2026-10-21",
-  "description": "Main-phone protocol v2, typed session status and browser pairing; server-enforced revocation.",
+  "snapshot_date": "2026-11-15",
+  "description": "Current local dumber.chat working tree, including API v2 group and call additions. Rust and Kotlin binding are one snapshot.",
   "sha256": {
     ".gitignore": "fd1c01eea528a4abb6753202679f78710f19b3824c49b1f04f3bf39c386d9d45",
-    "Cargo.lock": "e91b5d55be56ede3ec33c1392aab9987e01f319698d35c5a9412b110b244fd96",
-    "Cargo.toml": "7cad519b53b971f6ce58b4cab537b493820963b5fc088762dcf68829559762d3",
-    "README.md": "6987a42b701c4282347fd8252aa591e851c248539eee14742b87541900445845",
-    "examples/e2ee.rs": "917a8fc327cc2caeb6522fd483f4519275f619ab574282f3983a70774d0417e0",
+    "Cargo.lock": "f0e9149d96033b85246ae1ecb4f32670fcf69e641e7ceb6bff20e4b74e5cd66c",
+    "Cargo.toml": "b7d63b278ecb0f48d2ad1ce47c1acfc8d4892a6a4d78b20a0c533e2ac7c63de1",
+    "README.md": "242f63833b7b5cccfa2c612046090484399ecedd93258606dfb63877cefc8d93",
+    "bindings/kotlin/README.md": "889bb18bfab552c4d88029039aa8b01b06da98fe24fcb691fa8c56cfa5dc767a",
+    "bindings/kotlin/consumer-rules.pro": "4f896fb2ed5ed4f256880a61dddb8022379cd338949b6b299fc7edc3bbd6312d",
+    "bindings/kotlin/src/main/kotlin/chat/dumber/sdk/ChatApi.kt": "3441f7dcf865ef2fbb12f7409f97ce4cd57147d2d4d23774de1e83404d192fae",
+    "bindings/kotlin/src/main/kotlin/chat/dumber/sdk/ChatClient.kt": "98ca15a931fe31a5a57fb33d61fc21724302a111b93516561d5cbe54b7d5ca65",
+    "bindings/kotlin/src/main/kotlin/chat/dumber/sdk/ChatStorage.kt": "90240546ed9d98f43043099470ba49a5e76e7cc90d4609f05a6bb84361a6e854",
+    "bindings/kotlin/src/main/kotlin/chat/dumber/sdk/Models.kt": "3a29e90bc8c983256c2a22158dd27c5d33647cb868ff6bfc558d062c9ffd9746",
+    "bindings/kotlin/src/test/kotlin/chat/dumber/sdk/ChatClientTest.kt": "c2293d82a3c0a42d578cddc182dee0217077651b3666acb41f89b20da79e0737",
+    "examples/availability.rs": "6cd25769eff50f368c823171d1300e2ffe0bed6f3fe8b5fd265db6baf8c9fc9b",
+    "examples/e2ee.rs": "ba86c256e6d1acf5c0e361697510497ad0d0a99b468eaf693ca33fdfff2dfcca",
+    "examples/groups.rs": "d03dcd4067d368269746231913e4241acbd702c578f7b240950bcc9d8aed0ef0",
     "examples/smoke.rs": "2b7d35a61d90313b96aa631b130c82c5ffd3966d8e009de855415870fcb690db",
-    "src/api.rs": "632a21b8772e05588ab06ed50f42f51d6740f3533a7085f1cc5a9b94f85b9c8a",
+    "examples/support/mod.rs": "30e08836902ac629d5df77120af032a80dd4f2bb1af43a020b6bab54e20947f2",
+    "src/api.rs": "48df9c414ea2b447b1c6cb5b5c3b0b32274f08b77623c16b4f37866fabc64974",
+    "src/availability.rs": "b25d8cb5ef315c7414174b700784ed91d38e5c63b06c8ac128483e12b9f4ef11",
+    "src/bridge.rs": "daad96281573fbcd1c6f3a2df571028fc489777775060651bfd8882d6873d3ad",
+    "src/calls.rs": "eea6a6ab8f63f247e303adc926dfa500568bcce6f000550b586a91b874005663",
     "src/catchup.rs": "65ebc0225ab34c0a9db6cca09e6d0961a0718791cae25ee47d07a2ba71903b9f",
-    "src/encryption.rs": "cc9c42f1588a0567ab8772d4cb1e5982ecbce570a04018f75adb88823166c001",
-    "src/lib.rs": "5eb28408599ee4f546b878b1525eca7085083f0c024c7f2505e7acb0307fee8d"
-  }
+    "src/encryption.rs": "ac3f20d83d7f8083ea8ecccc99725b6374c8ee5cba7f5005c5a70f54b989cf8f",
+    "src/groups.rs": "c1cf63b721a9b8d781d3daa2e671c6102d53dad3d85c6208cb26c740e3744517",
+    "src/lib.rs": "2e15503af62589295b7353b87c4d3c3913faf31dc5bff9580651c1a68b095a04"
+  },
+  "local_adjustments": [
+    "Cargo.lock regenerated offline to include the two existing direct crypto dependencies missing from the upstream crate lock; dependency versions unchanged."
+  ]
 }

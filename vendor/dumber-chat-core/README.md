@@ -3,7 +3,7 @@
 Portable Rust messaging library for dumber.chat. Provides phone-number login,
 contact lookup, private one-to-one Matrix rooms, and end-to-end encrypted text
 messaging using the Matrix Rust SDK. Builds as an `rlib` and `cdylib`; Android
-uses the included Java/JNI JSON bridge.
+uses the shared typed Kotlin binding in `bindings/kotlin`.
 
 ## Build and check
 
@@ -120,32 +120,53 @@ emit conversation updates containing only refreshed contact labels.
 Session credentials are private Rust fields. Serialize the entire `Session`
 for secure persistence and deserialize it to restore it; its serialized form
 still contains internal credentials and must not be displayed or logged.
-Older sessions without a phone field remain readable (`phone()` returns `None`).
 
-## JSON and Android bindings
+## Android binding
 
-`invoke` is the **legacy Matrix-shaped compatibility bridge**, retained for the
-existing Android application. It does not use the new typed wire schema.
-New Rust integrations should use the methods above.
+Use the shared [Kotlin binding](bindings/kotlin/README.md). `ChatApi` exposes typed
+methods such as `verify`, `openChat`, `sendText`, `sync`, and `createGroup`.
+Results are Kotlin models; failures throw `ChatException` with an `ErrorKind` and
+optional retry delay. DPAD and the Android demo compile the same binding source.
+There is no application-facing JSON command API.
 
-`invoke` accepts JSON with `command`, `service`, `session`, and command arguments.
-Messaging commands require `store_path` and `store_password`. Responses are
-`{"ok":true,"data":...}` or `{"ok":false,"error":"..."}`.
-HTTP failures additionally provide `http_status` and, when available,
-`retry_after_seconds`; the existing error string is preserved. A lookup's 404
-means the recipient is not registered. Other failures, including 429, do not.
-Retain successful phone-to-Matrix-ID mappings locally and reuse them for
-`open_chat` and `send`: neither operation requires another directory lookup.
+`ChatStorage` encodes sessions, conversations, and messages as opaque strings for
+host-owned persistence. The library does not own the application's message database.
 
-Commands: `request_code`, `verify`, `lookup`, `resolve`, `open_chat`, `join`,
-`send`, `sync`, `devices`, `export_keys`, `import_keys`, and `logout`.
-The removed `history` command returns an explicit local error without contacting
-the server. Sync responses no longer include `prev_batch` history cursors.
-See `src/lib.rs` for legacy argument names and `src/api.rs` for the typed API. Legacy `sync` also accepts
-`retry_events`: objects containing `room_id` and the original encrypted `event`
-for messages whose keys were not yet available.
+### Internal JNI wire contract
 
-The Android JNI entry point is `chat.dumber.app.NativeCore.invoke(String)`.
+`chat.dumber.sdk.NativeBridge` privately serializes requests for `src/bridge.rs`,
+which delegates to public Rust `Client` methods. This is a library implementation
+detail. Requests carry `api_version:2`, client configuration, session metadata,
+and a tagged operation. The old app-owned JNI class and Matrix-shaped commands
+are removed. Ship the binding and native library from the same source snapshot.
+
+`verify` returns `SessionInfo`; persist it securely. Its `credentials` string is
+opaque: never parse, display, or log it. `Session::info()` and `SessionInfo::restore()`
+provide the same conversion for Rust callers. `request_code` and `verify` do not
+require a session. Messaging requires the persistent encrypted store.
+
+Successful responses are `{"ok":true,"data":...}`; unit results use `null` and
+`conversations` returns an array. Failures contain `ok:false`, a safe `error`
+message, `error_kind`, and optional `retry_after_seconds`. Use `Failure::from_error`
+for the same classification from Rust. Kinds include `invalid_input`,
+`authentication_required`, `recipient_unavailable`, `rate_limited`,
+`transport_failure`, `permission_denied`, `not_found`, `upgrade_required`, and
+`internal`. No Matrix error codes or raw server diagnostics cross this boundary.
+
+The operation names and typed arguments are defined in `src/bridge.rs`.
+`recipient_status(phone)` reads cached availability; `check_recipient(phone, force)`
+checks availability without creating a conversation. Negative results last 24 hours;
+a failed refresh preserves a negative decision. Transient errors back off for five
+minutes; server rate limits apply across numbers for the account. Force bypasses TTL,
+not server rate limits. `open_chat_cached` (or `cached_only:true` in the bridge)
+never performs directory discovery. Sends retain caller-supplied transaction IDs.
+Received messages may include `transaction_id` for reconciling outgoing echoes.
+
+`sync` owns identity resolution, membership interpretation, catch-up, and decryption
+retries. Applications consume `SyncUpdate` and keep their histories and pending-send
+databases. No raw room events, user-ID lookup, history pagination, or decryption-retry
+payloads are accepted by the normal bridge operations.
+
 Cross-compile for `aarch64-linux-android` using Android NDK Clang (API 26+), setting
 Cargo's target linker and the target-specific CC, CXX and AR variables. Package
 `libdumber_chat_core.so` in the application's ARM64 `jniLibs` directory.
@@ -176,8 +197,7 @@ CHAT_TEST_STORE=/private/test-crypto \
 cargo run --locked --example e2ee
 ```
 
-For legacy session fixtures lacking a `phone` field, also set
-`CHAT_TEST_RECIPIENT_PHONE` to the second test account's phone number.
+Test sessions must include their verified `phone` fields.
 
 It checks encrypted delivery, ciphertext on Synapse, encrypted key export/import,
 and wrong-passphrase rejection. Optional `CHAT_EXPECT_MESSAGE` and
@@ -196,12 +216,78 @@ server-enforced: a replacement phone revokes the old phone and browsers; logging
 out the main phone revokes linked browsers. Browser-only logout leaves the main
 phone intact. `review_pairing` must precede explicit user confirmation and
 `approve_pairing`; use the same session for both. The app supplies the eight-digit
-code displayed by the browser. `HttpFailure` exposes `status`, `error_code`,
-`detail`, and `retry_after_seconds`; HTTP 401 means the session must be replaced
+code displayed by the browser. `Failure::from_error` exposes a protocol-independent `kind`,
+`message`, and `retry_after_seconds`; HTTP 401 means the session must be replaced
 through phone verification. Do not silently create a new session or auto-approve.
 
-DPAD uses the JSON commands `session_status`, `pairing_review`, and
-`pairing_approve` (the latter two take `code`) through the same Rust JNI bridge as
-verification, directory queries, logout, and encrypted messaging. No app-side HTTP
+DPAD uses the Kotlin methods `sessionStatus()`, `reviewPairing(code)`, and
+`approvePairing(code)` through the shared binding, alongside verification,
+discovery, logout, and encrypted messaging. No app-side HTTP
 implementation is required. On verification, adopt the returned session and use
 a new device crypto store; retain the application's local message history.
+
+## Encrypted groups
+
+`create_group(&session, name, &[], operation_id)` creates a private,
+non-federated encrypted group with only the creator. Add participants afterward
+with `invite_member`; an initial list of phone numbers is also supported.
+Persist a unique operation ID before calling and
+reuse it with the same inputs after errors. Creation uses a stable room alias,
+so retrying an ambiguous response does not create a second group. Phone lookups
+are cached; every chosen recipient must resolve before room creation.
+
+`Conversation` now includes `kind` (`direct`, `group`, or `unknown`), `name`,
+`members` (contact, membership enum, admin), and `capabilities` (manage/send).
+Partial invitations may have unknown kind: do not guess a direct recipient from an inviter alone.
+
+Operations: `conversation_info`, `invite_member`, `remove_member`, `rename_group`,
+`grant_admin`, and `leave`. Removal/admin operations take opaque `ContactId`s;
+creation/invitation take E.164 numbers. Existing `join`, `send_text`, and `sync`
+work with groups. Sync emits name, membership, and permission updates even without
+text messages. Sync again after management operations to update cached typed
+conversations, or use `conversation_info` for a fresh snapshot.
+
+The JSON bridge uses the same operations with `conversation_id` and `contact_id`
+arguments. `conversation_info` fetches current metadata; `conversations` reads
+cached typed metadata. Fetching current state may fail for invitations or departed
+members.
+
+Groups use immutable creation type `chat.dumber.group`, including when only two
+members remain. New members receive messages from joining onward. Admins control
+name, invitations, removal, and admin grants. Leaving does not require a handover;
+to hand over, confirm `grant_admin` succeeds before calling `leave`. Matrix may
+retain creator privileges, so this is an admin grant, not creator replacement.
+Names and membership are ordinary Matrix state visible to the server; text is
+end-to-end encrypted. Local deletion and leaving do not delete others' history.
+
+The opt-in `groups` example requires `CHAT_SERVICE`, `CHAT_TEST_SESSIONS` (three
+reserved sessions with phone fields), and `CHAT_TEST_STORE`. It checks delivery,
+ciphertext, creation retries, admin handover, and exports the recipient's keys to
+test that pre-join and post-removal events cannot be decrypted. Run it only on a
+private test service with dedicated sessions; revoke sessions after testing.
+
+
+## Typed encrypted call signaling
+
+`set_call_capability`, `call_capability`, `turn_config`, `send_call`, and
+`acknowledge_calls` expose call support without giving a host raw Matrix events.
+`SyncUpdate.calls` contains `CallEvent` values separately from chat messages.
+`CallSignal` carries a `CallKind`, call/party IDs, timestamp, and bounded typed SDP
+or candidate fields. The bridge exposes equivalent `set_call_capability`,
+`call_capability`, `turn_config`, `send_call`, `acknowledge_calls` operations;
+this is an additive API v2 extension.
+
+Only decrypted events from the other member of a joined direct conversation are
+accepted. Plaintext, groups, wrong senders, expired signals and replayed event IDs
+are rejected. SDP must contain one DTLS-SRTP audio section and a SHA-256 certificate
+fingerprint. An invite lives at most 45 seconds and renegotiation 15 seconds;
+other events live 60 seconds. The bounded durable inbox remains in the encrypted
+store until the host acknowledges delivery or events expire, allowing a Binder
+consumer to reconnect. It must not be displayed as a message or counted unread.
+The host owns ringing, timeouts, answer selection, deduplication across process
+restarts, block policy and media. TURN passwords must never be logged.
+
+A host sends all signals through `send_call` with a stable transaction ID across
+retries. The core requires an encrypted room with exactly two joined members and
+uses the SDK's encrypted raw-event send path. This uses the existing message
+trust policy; it does not add a separate identity verification workflow.

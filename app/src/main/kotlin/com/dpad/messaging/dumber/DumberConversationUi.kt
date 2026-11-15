@@ -60,7 +60,6 @@ class DumberConversationUi(
     fun render() {
         val status = if (eligible()) number()?.let { DumberDirectory.cached(activity, it, account = owner().orEmpty()) } else null
         val statusText = when {
-            !carrierOnly() && owner() == null && DumberAccount.needsLegacyLink(activity) -> R.string.dumber_status_link_sim
             !carrierOnly() && DumberAccount.connected(activity) && owner() == null -> R.string.dumber_status_sim_unconnected
             !eligible() -> R.string.dumber_status_sms
             status?.absent == true -> R.string.dumber_status_sms
