@@ -140,4 +140,18 @@ class MessageReactionsTest {
         assertEquals(listOf("See you at 5", "See you at 6"), received.map { it.message.body })
         assertEquals(listOf(false, true), received.map { it.edited })
     }
+
+    @Test
+    fun `my own sent reaction shows on the received message and can be removed`() {
+        val target = received("Dinner at 7?")
+        val mine = sent(ReactionParser.compose("👍", target.body))
+        val added = MessageReactions.resolve(listOf(target, mine))
+        assertTrue(added.reactions.getValue(MessageReactions.keyOf(target)).single().isMine)
+
+        val removed = MessageReactions.resolve(
+            listOf(target, mine, sent(ReactionParser.compose("👍", target.body, remove = true)))
+        )
+        assertTrue(removed.reactions.isEmpty())
+        assertEquals(2, removed.hidden.size)
+    }
 }

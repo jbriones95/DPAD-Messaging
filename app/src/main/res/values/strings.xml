@@ -181,6 +181,8 @@
     <string name="reaction_from">%1$s from %2$s</string>
     <string name="reaction_you">You</string>
     <string name="view_reactions">View reactions</string>
+    <string name="react">React</string>
+    <string name="remove_reaction">Remove my reaction</string>
     <string name="reactions_title">Reactions</string>
     <string name="message_edited_time">Edited · %1$s</string>
     <string name="send_group_message_mms">Group Text via MMS</string>

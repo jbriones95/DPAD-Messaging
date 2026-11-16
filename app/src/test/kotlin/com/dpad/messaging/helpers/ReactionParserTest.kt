@@ -119,4 +119,21 @@ class ReactionParserTest {
         assertEquals("Loved an image", ReactionParser.displayText("Loved an image"))
         assertEquals("Removed a like from “Hi”", ReactionParser.displayText("Removed a like from “Hi”"))
     }
+
+    @Test
+    fun `composed reactions parse back`() {
+        assertEquals("👍 to “Hi”", ReactionParser.compose("👍", "Hi"))
+        assertEquals("Removed 👍 from “Hi”", ReactionParser.compose("👍", "Hi", remove = true))
+        assertEquals("❤️ to an image", ReactionParser.compose("❤️", "", "image/jpeg"))
+        for (emoji in ReactionParser.PICKER_EMOJI) {
+            val p = parsed(ReactionParser.compose(emoji, "See you at 5"))
+            assertEquals(Kind.ADD, p.kind)
+            assertEquals(emoji, p.emoji)
+            assertEquals("See you at 5", p.quotedText)
+            assertEquals(Kind.REMOVE, parsed(ReactionParser.compose(emoji, "x", remove = true)).kind)
+        }
+        val long = parsed(ReactionParser.compose("👍", "word ".repeat(60)))
+        assertTrue(long.isTruncated)
+        assertTrue("word ".repeat(60).startsWith(long.quotePrefix))
+    }
 }

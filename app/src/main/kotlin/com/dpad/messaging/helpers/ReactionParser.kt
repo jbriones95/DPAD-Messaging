@@ -131,6 +131,36 @@ object ReactionParser {
         return "${parsed.emoji} to “${parsed.quotedText}”"
     }
 
+    /** Emoji offered when reacting from this app. */
+    val PICKER_EMOJI = listOf("👍", "❤️", "😂", "😮", "😢", "😡", "👎", "‼️", "❓")
+
+    private const val MAX_QUOTE_LENGTH = 100
+
+    /**
+     * Builds the text sent to react to a message, in the Google Messages format
+     * ("👍 to “Hi”"), or to take a reaction back ("Removed 👍 from “Hi”").
+     * [mimeType] is used when the message has no text ("👍 to an image").
+     */
+    fun compose(emoji: String, targetBody: String, mimeType: String = "", remove: Boolean = false): String {
+        val text = targetBody.trim()
+        val target = when {
+            text.isNotEmpty() -> "“${shorten(text)}”"
+            mimeType.startsWith("image/") -> "an image"
+            mimeType.startsWith("video/") -> "a video"
+            mimeType.startsWith("audio/") -> "an audio message"
+            else -> "an attachment"
+        }
+        return if (remove) "Removed $emoji from $target" else "$emoji to $target"
+    }
+
+    /** Keeps the reaction within one or two SMS segments for long messages. */
+    private fun shorten(text: String): String {
+        if (text.length <= MAX_QUOTE_LENGTH) return text
+        var end = MAX_QUOTE_LENGTH
+        if (Character.isHighSurrogate(text[end - 1])) end--
+        return text.substring(0, end).trimEnd() + "…"
+    }
+
     private fun emojiResult(kind: Kind, match: MatchResult): Parsed? {
         val emoji = match.groupValues[1]
         if (!looksLikeEmoji(emoji)) return null

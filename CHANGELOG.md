@@ -10,6 +10,7 @@
 ## Unreleased
 
 - Reactions from iPhones and Google Messages (for example **Liked “See you at 5”** or **👍 to “See you at 5”**) now appear as a reaction on the original message instead of as a separate text. Hold OK on a message and choose **View reactions** to see who reacted. Turn this off under Settings → **Show Reactions on Messages** to see the original texts.
+- React to a received message: hold OK on it, choose **React** and pick an emoji. **Remove my reaction** takes it back. Reactions are sent as a normal text in the Google Messages format.
 
 ## 0.5.13
 
