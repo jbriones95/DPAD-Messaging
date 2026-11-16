@@ -19,6 +19,8 @@ import com.dpad.messaging.events.RefreshMessages
 import com.dpad.messaging.helpers.AppCoroutineScopes
 import com.dpad.messaging.helpers.MmsHelper
 import com.dpad.messaging.helpers.NotificationHelper
+import com.dpad.messaging.helpers.ReactionParser
+import com.dpad.messaging.helpers.Prefs
 import com.dpad.messaging.helpers.PhoneNumberMatcher
 import com.dpad.messaging.helpers.SmsWhitelistManager
 import kotlinx.coroutines.launch
@@ -297,7 +299,10 @@ class MmsDownloadReceiver : BroadcastReceiver() {
 
             if (!isBlocked && address.isNotBlank()) {
                 val senderName = App.get().contactHelper.getDisplayName(address)
-                NotificationHelper.showIncomingNotification(context, threadId, senderName, address, body)
+                NotificationHelper.showIncomingNotification(
+                    context, threadId, senderName, address,
+                    if (Prefs.get().convertReactions) ReactionParser.displayText(body) else body
+                )
             }
 
             EventBus.getDefault().post(RefreshConversations())

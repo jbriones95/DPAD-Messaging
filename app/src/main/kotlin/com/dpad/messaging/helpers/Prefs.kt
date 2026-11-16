@@ -41,6 +41,7 @@ class Prefs private constructor(context: Context) {
         private const val KEY_EXPERIMENTAL_UPDATES = "experimental_updates"
         private const val KEY_MESSAGE_NOTIFICATION_STYLE = "message_notification_style"
         private const val KEY_MESSAGE_VIBRATION_STYLE = "message_vibration_style"
+        private const val KEY_CONVERT_REACTIONS = "convert_reactions"
         private const val KEY_CONTACT_COLOR_PREFIX = "contact_color_"
 
         const val PRIVACY_FULL        = "full"
@@ -108,6 +109,15 @@ class Prefs private constructor(context: Context) {
     var sendGroupMessageMms: Boolean
         get() = prefs.getBoolean(KEY_SEND_GROUP_MESSAGE_MMS, true)
         set(v) = prefs.edit().putBoolean(KEY_SEND_GROUP_MESSAGE_MMS, v).apply()
+
+    /**
+     * Show reaction texts from iPhones and Google Messages ("Liked “…”",
+     * "👍 to “…”") as reactions on the original message. When disabled they
+     * appear as ordinary incoming messages. Default: true.
+     */
+    var convertReactions: Boolean
+        get() = prefs.getBoolean(KEY_CONVERT_REACTIONS, true)
+        set(v) = prefs.edit().putBoolean(KEY_CONVERT_REACTIONS, v).apply()
 
     /** Automatically download incoming MMS content. Default: true. */
     var autoDownloadMms: Boolean

@@ -175,6 +175,14 @@
     <string name="send_on_enter_summary">Pulsa Intro para enviar el mensaje</string>
     <string name="character_counter">Contador de caracteres</string>
     <string name="character_counter_summary">Mostrar la longitud del SMS y el número de segmentos</string>
+    <string name="convert_reactions">Mostrar reacciones en los mensajes</string>
+    <string name="convert_reactions_summary">Muestra los textos de reacción de iPhone y Google Messages, como Liked “…”, como una reacción en el mensaje original. Desactívalo para verlos como mensajes normales.</string>
+    <string name="message_reactions_description">%1$s. Reacciones: %2$s</string>
+    <string name="reaction_from">%1$s de %2$s</string>
+    <string name="reaction_you">Tú</string>
+    <string name="view_reactions">Ver reacciones</string>
+    <string name="reactions_title">Reacciones</string>
+    <string name="message_edited_time">Editado · %1$s</string>
     <string name="send_group_message_mms">Mensajes grupales por MMS</string>
     <string name="send_group_message_mms_summary">Mantén las respuestas de solo texto de un grupo en una conversación. Desactívalo para enviar SMS individuales.</string>
     <string name="auto_download_mms">Descargar MMS automáticamente</string>

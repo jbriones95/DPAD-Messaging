@@ -282,6 +282,13 @@ class SettingsActivity : BaseActivity() {
             getValue  = { prefs.characterCounter },
             setValue  = { prefs.characterCounter = it }
         )
+        toggleRow(
+            container = c,
+            label     = getString(R.string.convert_reactions),
+            summary   = getString(R.string.convert_reactions_summary),
+            getValue  = { prefs.convertReactions },
+            setValue  = { prefs.convertReactions = it }
+        )
 
         sectionHeader(c, getString(R.string.mms_settings))
 

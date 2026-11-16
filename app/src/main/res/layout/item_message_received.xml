@@ -99,4 +99,24 @@
 
     </com.dpad.messaging.views.MessageBubbleLayout>
 
+    <!-- Reactions pill, overlapping the bottom edge of the bubble. Not focusable:
+         reactions are read with the bubble and listed from its long-press menu. -->
+    <TextView
+        android:id="@+id/tv_reactions"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/reaction_pill_inset"
+        android:layout_marginTop="@dimen/reaction_pill_overlap"
+        android:background="@drawable/reaction_pill_bg"
+        android:focusable="false"
+        android:importantForAccessibility="no"
+        android:includeFontPadding="false"
+        android:paddingStart="@dimen/reaction_pill_padding_h"
+        android:paddingEnd="@dimen/reaction_pill_padding_h"
+        android:paddingTop="@dimen/reaction_pill_padding_v"
+        android:paddingBottom="@dimen/reaction_pill_padding_v"
+        android:textColor="@color/text_primary"
+        android:textSize="@dimen/text_size_meta"
+        android:visibility="gone" />
+
 </LinearLayout>

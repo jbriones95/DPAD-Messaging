@@ -14,6 +14,8 @@ import com.dpad.messaging.events.RefreshMessages
 import com.dpad.messaging.helpers.SmsWhitelistManager
 import com.dpad.messaging.helpers.AppCoroutineScopes
 import com.dpad.messaging.helpers.NotificationHelper
+import com.dpad.messaging.helpers.ReactionParser
+import com.dpad.messaging.helpers.Prefs
 import com.dpad.messaging.helpers.PhoneNumberMatcher
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -196,7 +198,10 @@ class SmsReceiver : BroadcastReceiver() {
                 address
             }
             try {
-                NotificationHelper.showIncomingNotification(context, threadId, senderName, address, body)
+                NotificationHelper.showIncomingNotification(
+                    context, threadId, senderName, address,
+                    if (Prefs.get().convertReactions) ReactionParser.displayText(body) else body
+                )
             } catch (e: Exception) {
                 Log.e("DPAD_MSG", "SmsReceiver: could not post incoming notification", e)
             }

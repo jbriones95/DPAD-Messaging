@@ -14,6 +14,7 @@ import com.dpad.messaging.R
 import com.dpad.messaging.databinding.ItemConversationBinding
 import com.dpad.messaging.helpers.ContactColors
 import com.dpad.messaging.helpers.Prefs
+import com.dpad.messaging.helpers.ReactionParser
 import com.dpad.messaging.helpers.ThemeManager
 import com.dpad.messaging.models.Conversation
 import java.text.SimpleDateFormat
@@ -80,7 +81,12 @@ class ConversationsAdapter(
             binding.tvName.setTypeface(null, bold)
 
             // Snippet
-            binding.tvSnippet.text = conversation.snippet
+            val snippet = if (Prefs.get().convertReactions) {
+                ReactionParser.displayText(conversation.snippet)
+            } else {
+                conversation.snippet
+            }
+            binding.tvSnippet.text = snippet
             binding.tvSnippet.setTypeface(null, bold)
             binding.tvSnippet.setTextColor(
                 if (!conversation.read)
@@ -103,7 +109,7 @@ class ConversationsAdapter(
             }.joinToString(", ")
             binding.conversationClickArea.contentDescription = listOf(
                 conversation.title,
-                conversation.snippet.takeIf { it.isNotBlank() },
+                snippet.takeIf { it.isNotBlank() },
                 binding.tvDate.text.toString().takeIf { it.isNotBlank() },
                 unreadDescription,
                 stateDescription.takeIf { it.isNotBlank() }

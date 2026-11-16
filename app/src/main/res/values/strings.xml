@@ -175,6 +175,14 @@
     <string name="send_on_enter_summary">Press Enter key to send message</string>
     <string name="character_counter">Character Counter</string>
     <string name="character_counter_summary">Show SMS length and segment count</string>
+    <string name="convert_reactions">Show Reactions on Messages</string>
+    <string name="convert_reactions_summary">Show iPhone and Google Messages reaction texts like Liked “…” as a reaction on the original message. Turn off to see them as normal messages.</string>
+    <string name="message_reactions_description">%1$s. Reactions: %2$s</string>
+    <string name="reaction_from">%1$s from %2$s</string>
+    <string name="reaction_you">You</string>
+    <string name="view_reactions">View reactions</string>
+    <string name="reactions_title">Reactions</string>
+    <string name="message_edited_time">Edited · %1$s</string>
     <string name="send_group_message_mms">Group Text via MMS</string>
     <string name="send_group_message_mms_summary">Keep text-only group replies in one thread. Turn off to send individual SMS instead.</string>
     <string name="auto_download_mms">Automatically Download MMS</string>

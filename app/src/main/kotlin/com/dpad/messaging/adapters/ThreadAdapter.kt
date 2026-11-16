@@ -29,6 +29,7 @@ import com.dpad.messaging.helpers.Prefs
 import com.dpad.messaging.models.MmsAttachment
 import com.dpad.messaging.models.MmsAttachmentJson
 import com.dpad.messaging.models.Message
+import com.dpad.messaging.models.MessageReaction
 import com.dpad.messaging.models.ThreadItem
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -58,6 +59,13 @@ class ThreadAdapter(
     }
 
     companion object {
+        /** "👍 from Alice" – used for accessibility and the reactions list. */
+        fun reactionLabel(context: Context, reaction: MessageReaction): String = context.getString(
+            R.string.reaction_from,
+            reaction.emoji,
+            if (reaction.isMine) context.getString(R.string.reaction_you) else reaction.senderName
+        )
+
         private const val VIEW_TYPE_HEADER = 0
         private const val VIEW_TYPE_SENT = 1
         private const val VIEW_TYPE_RECEIVED = 2
@@ -132,9 +140,9 @@ class ThreadAdapter(
             is DateHeaderViewHolder ->
                 holder.bind(getItem(position) as ThreadItem.DateHeader)
             is SentViewHolder ->
-                holder.bind((getItem(position) as ThreadItem.SentMessage).message, position)
+                holder.bind(getItem(position) as ThreadItem.SentMessage, position)
             is ReceivedViewHolder ->
-                holder.bind((getItem(position) as ThreadItem.ReceivedMessage).message, position)
+                holder.bind(getItem(position) as ThreadItem.ReceivedMessage, position)
             is SendingViewHolder ->
                 holder.bind((getItem(position) as ThreadItem.SendingMessage).message, position)
             is FailedViewHolder ->
@@ -169,7 +177,8 @@ class ThreadAdapter(
     inner class SentViewHolder(
         private val binding: ItemMessageSentBinding
     ) : RecyclerView.ViewHolder(binding.root) {
-        fun bind(message: Message, position: Int) {
+        fun bind(item: ThreadItem.SentMessage, position: Int) {
+            val message = item.message
             binding.tvEncrypted.visibility = if (message.isEncrypted) View.VISIBLE else View.GONE
             binding.tvBody.text = message.body
             binding.bubbleContainer.isFocusable = !binding.tvBody.isFocusable
@@ -178,6 +187,7 @@ class ThreadAdapter(
             binding.tvBody.visibility = if (message.body.isBlank()) View.GONE else View.VISIBLE
             binding.tvTime.text = formatTime(message.date)
             binding.tvTime.visibility = if (shouldShowTime(position, message)) View.VISIBLE else View.GONE
+            bindReactions(binding.tvReactions, item.reactions)
             if (message.status == Message.STATUS_COMPLETE) {
                 binding.tvStatus.text = binding.root.context.getString(R.string.delivered)
                 binding.tvStatus.visibility = View.VISIBLE
@@ -198,6 +208,7 @@ class ThreadAdapter(
                     R.color.statusDelivered,
                     R.color.messageMetaOnSent
                 ),
+                reactions = item.reactions,
                 positionProvider = { bindingAdapterPosition }
             )
             binding.bubbleContainer.setOnLongClickListener {
@@ -210,15 +221,24 @@ class ThreadAdapter(
     inner class ReceivedViewHolder(
         private val binding: ItemMessageReceivedBinding
     ) : RecyclerView.ViewHolder(binding.root) {
-        fun bind(message: Message, position: Int) {
+        fun bind(item: ThreadItem.ReceivedMessage, position: Int) {
+            val message = item.message
             binding.tvEncrypted.visibility = if (message.isEncrypted) View.VISIBLE else View.GONE
             binding.tvBody.text = message.body
             binding.bubbleContainer.isFocusable = !binding.tvBody.isFocusable
             binding.bubbleContainer.isFocusableInTouchMode = !binding.tvBody.isFocusableInTouchMode
             binding.tvBody.scrollTo(0, 0)
             binding.tvBody.visibility = if (message.body.isBlank()) View.GONE else View.VISIBLE
-            binding.tvTime.text = formatTime(message.date)
-            binding.tvTime.visibility = if (shouldShowTime(position, message)) View.VISIBLE else View.GONE
+            if (item.edited) {
+                binding.tvTime.text = binding.root.context.getString(
+                    R.string.message_edited_time, formatTime(message.date)
+                )
+                binding.tvTime.visibility = View.VISIBLE
+            } else {
+                binding.tvTime.text = formatTime(message.date)
+                binding.tvTime.visibility = if (shouldShowTime(position, message)) View.VISIBLE else View.GONE
+            }
+            bindReactions(binding.tvReactions, item.reactions)
             if (message.senderName.isNotBlank()) {
                 binding.tvSenderName.text = message.senderName
                 binding.tvSenderName.visibility = View.VISIBLE
@@ -235,6 +255,7 @@ class ThreadAdapter(
                 message = message,
                 textViews = listOf(binding.tvBody, binding.tvTime, binding.tvSenderName, binding.tvEncrypted),
                 restingColors = null,
+                reactions = item.reactions,
                 positionProvider = { bindingAdapterPosition }
             )
             binding.bubbleContainer.setOnLongClickListener {
@@ -407,10 +428,11 @@ class ThreadAdapter(
         message: Message,
         textViews: List<TextView>,
         restingColors: List<Int>?,
+        reactions: List<MessageReaction> = emptyList(),
         positionProvider: () -> Int
     ) {
         onMessageClick?.let { action -> bubble.setOnClickListener { action(message) } }
-        bubble.contentDescription = messageDescription(bubble.context, message)
+        bubble.contentDescription = messageDescription(bubble.context, message, reactions)
         val colors = restingColors?.map { bubble.context.getColor(it) }
             ?: textViews.map { it.currentTextColor }
         val focusedColor = bubble.context.getColor(R.color.focus_content)
@@ -433,16 +455,38 @@ class ThreadAdapter(
         }
     }
 
-    private fun messageDescription(context: Context, message: Message): String {
+    private fun messageDescription(
+        context: Context,
+        message: Message,
+        reactions: List<MessageReaction>
+    ): String {
         val body = message.body.ifBlank {
             if (message.isMms) context.getString(R.string.attach)
             else context.getString(R.string.empty_message)
         }
-        return context.getString(
+        val description = context.getString(
             if (message.isIncoming) R.string.message_description_received
             else R.string.message_description_sent,
             body
         )
+        if (reactions.isEmpty()) return description
+        return context.getString(
+            R.string.message_reactions_description,
+            description,
+            reactions.joinToString(", ") { reactionLabel(context, it) }
+        )
+    }
+
+    /** Shows the reactions pill under a bubble, e.g. "👍 2  ❤️". */
+    private fun bindReactions(view: TextView, reactions: List<MessageReaction>) {
+        if (reactions.isEmpty()) {
+            view.visibility = View.GONE
+            return
+        }
+        view.text = reactions.groupingBy { it.emoji }.eachCount().entries.joinToString("  ") { (emoji, count) ->
+            if (count > 1) "$emoji $count" else emoji
+        }
+        view.visibility = View.VISIBLE
     }
 
     private inner class AttachmentAdapter(

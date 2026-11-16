@@ -28,6 +28,10 @@
     <dimen name="bubble_margin_h">2dp</dimen>
     <dimen name="bubble_margin_v">2dp</dimen>
     <dimen name="bubble_sender_margin_top">2dp</dimen>
+    <dimen name="reaction_pill_inset">10dp</dimen>
+    <dimen name="reaction_pill_overlap">-5dp</dimen>
+    <dimen name="reaction_pill_padding_h">6dp</dimen>
+    <dimen name="reaction_pill_padding_v">2dp</dimen>
     <dimen name="attachment_preview_width">60dp</dimen>
     <dimen name="attachment_preview_height">45dp</dimen>
 
