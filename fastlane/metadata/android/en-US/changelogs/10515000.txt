@@ -1,0 +1,3 @@
+Reactions from iPhones and Google Messages now appear on the original message instead of as separate texts. Hold OK on a message and choose "View reactions" to see who reacted.
+
+You can now react to a received message: hold OK, choose "React" and pick an emoji. "Remove my reaction" takes it back. Turn conversion off under Settings, "Show Reactions on Messages".

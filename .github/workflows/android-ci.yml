@@ -188,7 +188,7 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Set experimental version code
-        run: echo "EXPERIMENTAL_VERSION_CODE=$((10514000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+        run: echo "EXPERIMENTAL_VERSION_CODE=$((10515000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
 
       - name: Decode release keystore
         run: echo "${{ secrets.RELEASE_STORE_FILE }}" | base64 --decode > "$RUNNER_TEMP/release.jks"
