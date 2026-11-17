@@ -20,7 +20,7 @@
     "examples/smoke.rs": "2b7d35a61d90313b96aa631b130c82c5ffd3966d8e009de855415870fcb690db",
     "examples/support/mod.rs": "30e08836902ac629d5df77120af032a80dd4f2bb1af43a020b6bab54e20947f2",
     "src/api.rs": "48df9c414ea2b447b1c6cb5b5c3b0b32274f08b77623c16b4f37866fabc64974",
-    "src/availability.rs": "b25d8cb5ef315c7414174b700784ed91d38e5c63b06c8ac128483e12b9f4ef11",
+    "src/availability.rs": "a68a4ff327cdc778cced9680f54b2d23cdd589b42f1566cdd3bc2323bac7042f",
     "src/bridge.rs": "daad96281573fbcd1c6f3a2df571028fc489777775060651bfd8882d6873d3ad",
     "src/calls.rs": "eea6a6ab8f63f247e303adc926dfa500568bcce6f000550b586a91b874005663",
     "src/catchup.rs": "65ebc0225ab34c0a9db6cca09e6d0961a0718791cae25ee47d07a2ba71903b9f",

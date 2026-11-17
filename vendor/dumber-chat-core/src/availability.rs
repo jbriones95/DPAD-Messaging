@@ -119,9 +119,9 @@ impl Client {
             crypto.save_addresses(&book)?;
         }
         if let Err(error) = result {
-            if !error
+            if error
                 .downcast_ref::<HttpFailure>()
-                .is_some_and(|e| e.status == 404)
+                .is_none_or(|e| e.status != 404)
             {
                 return Err(error);
             }
