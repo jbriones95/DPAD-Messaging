@@ -8,15 +8,15 @@ DPAD Messaging is a community project, and translations are welcome. The app shi
 
 | Language | Folder | Status |
 | --- | --- | --- |
-| English | `app/src/main/res/values/` | Source of truth (295 strings) |
-| German | `app/src/main/res/values-de/` | Complete (295/295) |
-| Spanish | `app/src/main/res/values-es/` | Complete (295/295) |
+| English | `app/src/main/res/values/` | Source of truth (312 strings) |
+| German | `app/src/main/res/values-de/` | Complete (312/312) |
+| Spanish | `app/src/main/res/values-es/` | Complete (312/312) |
 
 German and Spanish are complete. More languages are welcome — [open an issue](https://github.com/jbriones95/DPAD-Messaging/issues/new?template=translation.yml) to start one.
 
 ## What needs translating
 
-All user-visible text is in [`app/src/main/res/values/strings.xml`](app/src/main/res/values/strings.xml). The app currently has **295 strings**, no plurals and no string arrays. The [full list](#full-list-of-english-strings) is at the bottom of this document, grouped by screen.
+All user-visible text is in [`app/src/main/res/values/strings.xml`](app/src/main/res/values/strings.xml). The app currently has **312 strings**, no plurals and no string arrays. The [full list](#full-list-of-english-strings) is at the bottom of this document, grouped by screen.
 
 ## How to contribute
 
@@ -465,8 +465,25 @@ This list mirrors `app/src/main/res/values/strings.xml`. Keys in `backticks` are
 | `install_update` | Install update | — |
 | `update_check_failed` | Update check failed: %1$s | Keep placeholders: `%1$s` |
 | `update_installer_unavailable` | Android could not open the package installer | — |
+| `dumber_encrypted` | encrypted | — |
+| `dumber_status_encrypted` | End-to-end encrypted | — |
+| `dumber_status_sms` | SMS/MMS — not end-to-end encrypted | — |
+| `dumber_status_checking` | Checking availability… | — |
+| `dumber_status_unknown` | Availability unknown | — |
+| `dumber_recheck` | Check availability again | — |
+| `dumber_recheck_detail` | This uses one of your 50 daily phone lookups. Known recipients can already receive encrypted messages without another lookup. | — |
+| `dumber_send_pending` | Message waiting for your decision | — |
+| `dumber_send_pending_detail` | Open the conversation to retry encrypted delivery or choose unencrypted SMS. | — |
+| `dumber_pending_count` | Unsent (%1$d) | Keep placeholders: `%1$d` |
+| `dumber_retry_encrypted` | Retry encrypted | — |
+| `dumber_send_sms` | Send as SMS | — |
+| `dumber_sms_confirmation` | Send this message as an unencrypted SMS? Carrier charges may apply. | — |
+| `dumber_sms_uncertain` | Encrypted delivery could not be confirmed. The recipient may already have received it. Sending an unencrypted SMS may deliver a duplicate. Carrier charges may apply. | — |
+| `dumber_status_sim_unconnected` | SMS · SIM not connected | — |
+| `dumber_recipient_unavailable` | Recipient no longer available on dumber.chat | — |
+| `dumber_recipient_unavailable_sms` | Send this message as regular SMS? | — |
 
-<!-- 295 strings -->
+<!-- 312 strings -->
 
 ## Keeping this list current
 
@@ -477,3 +494,5 @@ python3 scripts/check-translations.py --inventory
 ```
 
 Replace the generated section (everything from `## Full list of English strings` onward) with the output, and keep the contributor guidance above it.
+
+Some encrypted-chat labels live in `app/src/main/res/values/dumber_group_ui.xml` and are not yet part of this inventory.

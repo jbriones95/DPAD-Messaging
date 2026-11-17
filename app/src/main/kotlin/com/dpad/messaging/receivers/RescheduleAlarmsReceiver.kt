@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
  */
 class RescheduleAlarmsReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action != Intent.ACTION_LOCKED_BOOT_COMPLETED) com.dpad.messaging.dumber.DumberSyncService.ensureStarted(context)
         val pendingResult = goAsync()
         AppCoroutineScopes.io.launch {
             try {

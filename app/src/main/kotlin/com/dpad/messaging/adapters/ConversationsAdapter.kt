@@ -30,7 +30,7 @@ class ConversationsAdapter(
 ) : ListAdapter<Conversation, ConversationsAdapter.ConversationViewHolder>(DIFF_CALLBACK) {
 
     init {
-        setHasStableIds(true)
+        setHasStableIds(false)
     }
 
     override fun getItemId(position: Int): Long = getItem(position).threadId
@@ -38,10 +38,10 @@ class ConversationsAdapter(
     companion object {
         private val DIFF_CALLBACK = object : DiffUtil.ItemCallback<Conversation>() {
             override fun areItemsTheSame(old: Conversation, new: Conversation) =
-                old.threadId == new.threadId
+                old.referenceKey == new.referenceKey
 
             override fun areContentsTheSame(old: Conversation, new: Conversation) =
-                old == new
+                old == new && old.group == new.group
         }
 
         private val timeFormat12h by lazy { SimpleDateFormat("h:mm a", Locale.getDefault()) }
@@ -147,7 +147,7 @@ class ConversationsAdapter(
             binding.btnConversationMenu.setOnClickListener {
                 onConversationMenuClick(it, conversation)
             }
-            binding.btnConversationMenu.tag = conversation.threadId
+            binding.btnConversationMenu.tag = conversation.referenceKey
         }
 
         private fun bindAvatar(conversation: Conversation) {

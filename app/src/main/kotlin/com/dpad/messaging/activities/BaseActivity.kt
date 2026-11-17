@@ -29,6 +29,7 @@ abstract class BaseActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        com.dpad.messaging.dumber.DumberSyncService.ensureStarted(this)
         val currentAccent = try { Prefs.get().appAccent } catch (_: Exception) { Prefs.ACCENT_BLUE }
         if (currentAccent != appliedAccent) {
             appliedAccent = currentAccent

@@ -325,4 +325,22 @@
     <string name="install_update">Instalar actualización</string>
     <string name="update_check_failed">Error al buscar actualizaciones: %1$s</string>
     <string name="update_installer_unavailable">Android no pudo abrir el instalador de paquetes</string>
+    <!-- dumber.chat -->
+    <string name="dumber_encrypted">cifrado</string>
+    <string name="dumber_status_encrypted">Cifrado de extremo a extremo</string>
+    <string name="dumber_status_sms">SMS/MMS: sin cifrado de extremo a extremo</string>
+    <string name="dumber_status_checking">Comprobando disponibilidad…</string>
+    <string name="dumber_status_unknown">Disponibilidad desconocida</string>
+    <string name="dumber_recheck">Comprobar disponibilidad de nuevo</string>
+    <string name="dumber_recheck_detail">Esto usa una de tus 50 consultas telefónicas diarias. Los destinatarios conocidos ya pueden recibir mensajes cifrados sin otra consulta.</string>
+    <string name="dumber_send_pending">Mensaje pendiente de tu decisión</string>
+    <string name="dumber_send_pending_detail">Abre la conversación para reintentar el envío cifrado o elegir SMS sin cifrar.</string>
+    <string name="dumber_pending_count">Sin enviar (%1$d)</string>
+    <string name="dumber_retry_encrypted">Reintentar cifrado</string>
+    <string name="dumber_send_sms">Enviar como SMS</string>
+    <string name="dumber_sms_confirmation">¿Enviar este mensaje como SMS sin cifrar? Pueden aplicarse cargos del operador.</string>
+    <string name="dumber_sms_uncertain">No se pudo confirmar la entrega cifrada. Es posible que el destinatario ya lo haya recibido. Enviar un SMS sin cifrar puede entregarlo por duplicado. Pueden aplicarse cargos del operador.</string>
+    <string name="dumber_status_sim_unconnected">SMS · SIM no conectada</string>
+    <string name="dumber_recipient_unavailable">El destinatario ya no está disponible en dumber.chat</string>
+    <string name="dumber_recipient_unavailable_sms">¿Enviar este mensaje como SMS normal?</string>
 </resources>

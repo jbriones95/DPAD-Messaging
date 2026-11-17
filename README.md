@@ -133,3 +133,10 @@ The app follows the phone's language when a translation exists. Community transl
 ## License
 
 MIT
+
+## Optional dumber.chat messaging
+
+Settings → Messaging → **Connect dumber.chat** enables encrypted one-to-one and group text
+messages with registered contacts. Direct chats offer explicitly confirmed SMS fallback;
+encrypted groups never fall back to SMS/MMS. Native build requirements, behavior and tests are described in
+[docs/dumber-chat.md](docs/dumber-chat.md).

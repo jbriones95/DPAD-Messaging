@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="dumber_group_message_hint">Encrypted message</string>
+    <string name="dumber_group_join">Join group</string>
+    <string name="dumber_group_decline">Decline invitation</string>
+    <string name="dumber_group_details">Group details</string>
+    <string name="dumber_group_refresh">Refresh</string>
+    <string name="dumber_group_pending">Pending</string>
+    <string name="dumber_group_unknown_sender">Unknown participant</string>
+    <string name="dumber_group_unable_to_decrypt">Unable to decrypt</string>
+    <string name="dumber_group_unsupported">Unsupported message</string>
+    <string name="dumber_group_unsent_count">Unsent (%1$d)</string>
+    <string name="dumber_group_disconnected">Reconnect the original account</string>
+    <string name="dumber_group_invited">Group invitation</string>
+    <string name="dumber_group_left">No longer a group member</string>
+    <string name="dumber_group_read_only">Sending is not permitted</string>
+    <string name="dumber_group_options">Group options</string>
+    <string name="dumber_group_leave">Leave group</string>
+    <string name="dumber_group_encryption_info">Group texts are end-to-end encrypted and never fall back to SMS/MMS. Names and membership are visible to the server. New members see messages from joining onward.</string>
+    <string name="dumber_group_choose_participants">Choose participants, or continue with none and invite them later.</string>
+</resources>

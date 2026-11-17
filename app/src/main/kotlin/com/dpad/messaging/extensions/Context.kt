@@ -279,6 +279,7 @@ suspend fun Context.getMessagesForThread(
     val smsProjection = arrayOf(
         Telephony.Sms._ID,
         Telephony.Sms.BODY,
+        Telephony.Sms.SERVICE_CENTER,
         Telephony.Sms.DATE,
         Telephony.Sms.DATE_SENT,
         Telephony.Sms.TYPE,
@@ -290,6 +291,7 @@ suspend fun Context.getMessagesForThread(
     val smsFallbackProjection = arrayOf(
         Telephony.Sms._ID,
         Telephony.Sms.BODY,
+        Telephony.Sms.SERVICE_CENTER,
         Telephony.Sms.DATE,
         Telephony.Sms.TYPE,
         Telephony.Sms.READ,
@@ -351,6 +353,7 @@ suspend fun Context.getMessagesForThread(
                         senderPhotoUri = contactInfo?.photoUri ?: "",
                         isMms = false,
                         status = if (idxStatus >= 0) cursor.getInt(idxStatus) else Message.STATUS_NONE,
+                        isEncrypted = cursor.getColumnIndex(Telephony.Sms.SERVICE_CENTER).let { index -> index >= 0 && com.dpad.messaging.dumber.DumberProtocol.encryptedMarker(cursor.getString(index)) },
                         subscriptionId = if (idxSubId >= 0) cursor.getInt(idxSubId) else -1
                     )
                 )
@@ -637,6 +640,7 @@ fun Context.getSmsMessageById(id: Long, contactHelper: ContactHelper): Message? 
         Telephony.Sms._ID,
         Telephony.Sms.THREAD_ID,
         Telephony.Sms.BODY,
+        Telephony.Sms.SERVICE_CENTER,
         Telephony.Sms.DATE,
         Telephony.Sms.DATE_SENT,
         Telephony.Sms.TYPE,
@@ -664,6 +668,7 @@ fun Context.getSmsMessageById(id: Long, contactHelper: ContactHelper): Message? 
                 senderPhotoUri = contactInfo?.photoUri ?: "",
                 isMms          = false,
                 status         = cursor.getInt(cursor.getColumnIndexOrThrow(Telephony.Sms.STATUS)),
+                isEncrypted = com.dpad.messaging.dumber.DumberProtocol.encryptedMarker(cursor.getString(cursor.getColumnIndexOrThrow(Telephony.Sms.SERVICE_CENTER))),
                 subscriptionId = cursor.getInt(cursor.getColumnIndexOrThrow(Telephony.Sms.SUBSCRIPTION_ID))
             )
         }

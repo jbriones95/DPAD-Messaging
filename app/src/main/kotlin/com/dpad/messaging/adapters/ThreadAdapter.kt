@@ -39,7 +39,9 @@ class ThreadAdapter(
     private val onMessageLongClick: (Message) -> Unit,
     private val onAttachmentAction: (MmsAttachment) -> Unit = {},
     private val threadNumbers: List<String> = emptyList(),
-    private val onMessageFocused: (Message, Int, Int) -> Unit = { _, _, _ -> }
+    private val onMessageFocused: (Message, Int, Int) -> Unit = { _, _, _ -> },
+    private val onMessageClick: ((Message) -> Unit)? = null,
+    private val messageStateLabel: (Message) -> String? = { null }
 ) : ListAdapter<ThreadItem, RecyclerView.ViewHolder>(DIFF_CALLBACK) {
 
     private var audioPlayer: MediaPlayer? = null
@@ -168,6 +170,7 @@ class ThreadAdapter(
         private val binding: ItemMessageSentBinding
     ) : RecyclerView.ViewHolder(binding.root) {
         fun bind(message: Message, position: Int) {
+            binding.tvEncrypted.visibility = if (message.isEncrypted) View.VISIBLE else View.GONE
             binding.tvBody.text = message.body
             binding.bubbleContainer.isFocusable = !binding.tvBody.isFocusable
             binding.bubbleContainer.isFocusableInTouchMode = !binding.tvBody.isFocusableInTouchMode
@@ -188,11 +191,12 @@ class ThreadAdapter(
             applyMessageFocus(
                 bubble = binding.bubbleContainer,
                 message = message,
-                textViews = listOf(binding.tvBody, binding.tvTime, binding.tvStatus),
+                textViews = listOf(binding.tvBody, binding.tvTime, binding.tvStatus, binding.tvEncrypted),
                 restingColors = listOf(
                     R.color.bubbleSentText,
                     R.color.messageMetaOnSent,
-                    R.color.statusDelivered
+                    R.color.statusDelivered,
+                    R.color.messageMetaOnSent
                 ),
                 positionProvider = { bindingAdapterPosition }
             )
@@ -207,6 +211,7 @@ class ThreadAdapter(
         private val binding: ItemMessageReceivedBinding
     ) : RecyclerView.ViewHolder(binding.root) {
         fun bind(message: Message, position: Int) {
+            binding.tvEncrypted.visibility = if (message.isEncrypted) View.VISIBLE else View.GONE
             binding.tvBody.text = message.body
             binding.bubbleContainer.isFocusable = !binding.tvBody.isFocusable
             binding.bubbleContainer.isFocusableInTouchMode = !binding.tvBody.isFocusableInTouchMode
@@ -228,7 +233,7 @@ class ThreadAdapter(
             applyMessageFocus(
                 bubble = binding.bubbleContainer,
                 message = message,
-                textViews = listOf(binding.tvBody, binding.tvTime, binding.tvSenderName),
+                textViews = listOf(binding.tvBody, binding.tvTime, binding.tvSenderName, binding.tvEncrypted),
                 restingColors = null,
                 positionProvider = { bindingAdapterPosition }
             )
@@ -263,6 +268,7 @@ class ThreadAdapter(
                 binding.tvBody.setTextColor(context.getColor(R.color.bubbleReceivedText))
                 binding.tvTime.setTextColor(context.getColor(R.color.messageMetaOnReceived))
                 binding.tvSenderName.setTextColor(context.getColor(R.color.colorSecondary))
+                binding.tvEncrypted.setTextColor(context.getColor(R.color.colorSecondary))
                 return
             }
 
@@ -270,6 +276,7 @@ class ThreadAdapter(
             binding.tvBody.setTextColor(ContactColors.textColorOn(color))
             binding.tvTime.setTextColor(ContactColors.metaColorOn(color))
             binding.tvSenderName.setTextColor(color)
+            binding.tvEncrypted.setTextColor(ContactColors.metaColorOn(color))
         }
     }
 
@@ -381,7 +388,8 @@ class ThreadAdapter(
                 androidx.recyclerview.widget.LinearLayoutManager.HORIZONTAL,
                 false
             )
-            rvAttachments.setHasFixedSize(true)
+            // Attachment rows wrap their content, so their size can change.
+            rvAttachments.setHasFixedSize(false)
             rvAttachments.itemAnimator = null
             rvAttachments.setRecycledViewPool(attachmentPool)
         }
@@ -401,6 +409,7 @@ class ThreadAdapter(
         restingColors: List<Int>?,
         positionProvider: () -> Int
     ) {
+        onMessageClick?.let { action -> bubble.setOnClickListener { action(message) } }
         bubble.contentDescription = messageDescription(bubble.context, message)
         val colors = restingColors?.map { bubble.context.getColor(it) }
             ?: textViews.map { it.currentTextColor }
@@ -642,6 +651,7 @@ class ThreadAdapter(
         private val binding: ItemMessageFailedBinding
     ) : RecyclerView.ViewHolder(binding.root) {
         fun bind(message: Message, @Suppress("UNUSED_PARAMETER") position: Int) {
+            binding.tvState.text = messageStateLabel(message) ?: binding.root.context.getString(R.string.message_failed)
             binding.tvBody.text = message.body
             binding.bubbleContainer.isFocusable = !binding.tvBody.isFocusable
             binding.bubbleContainer.isFocusableInTouchMode = !binding.tvBody.isFocusableInTouchMode

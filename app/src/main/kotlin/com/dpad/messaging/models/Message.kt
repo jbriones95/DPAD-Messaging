@@ -83,11 +83,7 @@ data class Message(
     @ColumnInfo(name = "participants_json")
     val participantsJson: String = "[]",
 
-    /**
-     * Marks a message received through an encrypted transport. Always false in
-     * this build; retained so the database schema stays compatible with builds
-     * that support encrypted messaging.
-     */
+    /** True only for locally recorded, successfully encrypted Matrix events. */
     @ColumnInfo(name = "is_encrypted", defaultValue = "0")
     val isEncrypted: Boolean = false
 ) {

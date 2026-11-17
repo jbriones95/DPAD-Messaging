@@ -1,5 +1,7 @@
 package com.dpad.messaging.activities
 
+import com.dpad.messaging.dumber.*
+
 import android.Manifest
 import android.database.ContentObserver
 import android.app.role.RoleManager
@@ -207,12 +209,13 @@ class MainActivity : BaseActivity() {
     private fun setupConversationList() {
         conversationsAdapter = ConversationsAdapter(
             onConversationClick = { conversation ->
-                if (selectedThreadIds.isNotEmpty()) toggleSelection(conversation)
+                if (conversation.group != null) openThread(conversation)
+                else if (selectedThreadIds.isNotEmpty()) toggleSelection(conversation)
                 else openThread(conversation)
             },
-            onConversationLongClick = { conversation -> toggleSelection(conversation) },
-            onConversationMenuClick = { _, conversation -> showConversationContextMenu(conversation) },
-            onAvatarLongClick = { conversation -> showContactColorPicker(conversation) },
+            onConversationLongClick = { conversation -> if (conversation.group != null) openThread(conversation) else toggleSelection(conversation) },
+            onConversationMenuClick = { _, conversation -> if (conversation.group != null) openThread(conversation) else showConversationContextMenu(conversation) },
+            onAvatarLongClick = { conversation -> if (conversation.group != null) openThread(conversation) else showContactColorPicker(conversation) },
             isConversationSelected = { selectedThreadIds.contains(it) }
         )
 
@@ -228,7 +231,9 @@ class MainActivity : BaseActivity() {
 
     private fun setupToolbar() {
         binding.btnNewConversation.setOnClickListener {
-            startActivity(Intent(this, NewConversationActivity::class.java))
+            AlertDialog.Builder(this).setItems(if (com.dpad.messaging.BuildConfig.DUMBER_GROUP_CREATION) arrayOf("New message", "New encrypted group") else arrayOf("New message")) { _, which ->
+                startActivity(Intent(this, if (which == 0) NewConversationActivity::class.java else DumberGroupActivity::class.java))
+            }.show()
         }
         binding.btnSearch.setOnClickListener { showSearch() }
         binding.btnOverflow.setOnClickListener { showOverflowMenu() }
@@ -349,7 +354,7 @@ class MainActivity : BaseActivity() {
                         getConversationsFromTelephony(
                             App.get().contactHelper, pinnedIds,
                             mutedThreadIds = mutedIds, enrichContacts = false
-                        )
+                        ) + DumberGroupStore(this@MainActivity).use { it.conversations() }
                     }
                     if (!isActive) return@launch
                     displayConversations(preview)
@@ -357,13 +362,13 @@ class MainActivity : BaseActivity() {
                     binding.rvConversations.visibility = View.VISIBLE
                 }
                 val conversations = withContext(Dispatchers.IO) {
-                    withTimeoutOrNull(CONVERSATION_LOAD_TIMEOUT_MS) {
+                    (withTimeoutOrNull(CONVERSATION_LOAD_TIMEOUT_MS) {
                         getConversationsFromTelephony(
                             App.get().contactHelper,
                             pinnedIds,
                             mutedThreadIds = mutedIds
                         )
-                    } ?: throw java.io.IOException("Conversation load timed out")
+                    } ?: throw java.io.IOException("Conversation load timed out")) + DumberGroupStore(this@MainActivity).use { it.conversations() }
                 }
                 if (!isActive) return@launch
                 hasLoadedConversationsOnce = true
@@ -397,7 +402,8 @@ class MainActivity : BaseActivity() {
         }
     }
 
-    private fun displayConversations(conversations: List<Conversation>) {
+    private fun displayConversations(input: List<Conversation>) {
+        val conversations = input.sortedWith(compareByDescending<Conversation> { it.pinned }.thenByDescending { it.date })
         conversationLoadError = false
         binding.conversationError.visibility = View.GONE
         val visibleConversations = if (isSearchVisible && currentSearchQuery.length >= 2) {
@@ -408,7 +414,9 @@ class MainActivity : BaseActivity() {
                     it.phoneNumber.contains(query, ignoreCase = true)
             }
         } else conversations
-        selectedThreadIds.retainAll(visibleConversations.mapTo(HashSet()) { it.threadId })
+        selectedThreadIds.retainAll(
+            visibleConversations.filter { it.group == null }.mapTo(HashSet()) { it.threadId }
+        )
         conversationsAdapter.submitList(visibleConversations) {
             binding.tvEmpty.setText(
                 if (isSearchVisible && currentSearchQuery.length >= 2) {
@@ -481,6 +489,9 @@ class MainActivity : BaseActivity() {
     // ─── Navigation ─────────────────────────────────────────────────────────
 
     private fun openThread(conversation: Conversation) {
+        conversation.group?.let { group ->
+            startActivity(Intent(this, DumberGroupActivity::class.java).putExtra("account", group.account).putExtra("room", group.room)); return
+        }
         pendingFocusThreadId = conversation.threadId
         val intent = Intent(this, ThreadActivity::class.java).apply {
             putExtra(ThreadActivity.EXTRA_THREAD_ID, conversation.threadId)
@@ -494,6 +505,7 @@ class MainActivity : BaseActivity() {
     }
 
     private fun showContactColorPicker(conversation: Conversation) {
+        if (conversation.group != null) { openThread(conversation); return }
         val number = conversation.phoneNumber
         if (number.isBlank()) return
         val current = ContactColors.customColor(number)
@@ -715,17 +727,19 @@ class MainActivity : BaseActivity() {
 
     private fun showConversationContextMenu(conversation: Conversation) {
         // Find the anchor view - use the conversation menu button
-        val anchor = binding.rvConversations.findViewWithTag<View>(conversation.threadId)
+        val anchor = binding.rvConversations.findViewWithTag<View>(conversation.referenceKey)
 
             val popup = PopupMenu(ThemeManager.popupMenuContext(this), anchor ?: binding.rvConversations)
         popup.menu.apply {
-            add(0, 8, 0, getString(R.string.select_conversation))
+            if (conversation.group == null) add(0, 8, 0, getString(R.string.select_conversation))
             add(0, 1, 1, if (conversation.read) getString(R.string.mark_as_unread) else getString(R.string.mark_as_read))
             add(0, 2, 2, if (conversation.pinned) getString(R.string.unpin) else getString(R.string.pin))
             add(0, 3, 3, if (conversation.archived) getString(R.string.unarchive) else getString(R.string.archive))
-            add(0, 4, 4, if (Prefs.get().isThreadMuted(conversation.threadId)) getString(R.string.unmute_conversation) else getString(R.string.mute_conversation))
-            add(0, 5, 5, getString(R.string.copy_number))
-            add(0, 6, 6, getString(if (Prefs.get().recycleBinEnabled) R.string.move_to_recycle_bin else R.string.delete))
+            add(0, 4, 4, if (if (conversation.group != null) conversation.muted else Prefs.get().isThreadMuted(conversation.threadId)) getString(R.string.unmute_conversation) else getString(R.string.mute_conversation))
+            if (conversation.group == null) {
+                add(0, 5, 5, getString(R.string.copy_number))
+                add(0, 6, 6, getString(if (Prefs.get().recycleBinEnabled) R.string.move_to_recycle_bin else R.string.delete))
+            }
             add(0, 7, 7, getString(R.string.conversation_details))
         }
 
@@ -747,6 +761,7 @@ class MainActivity : BaseActivity() {
     }
 
     private fun toggleSelection(conversation: Conversation) {
+        if (conversation.group != null) { openThread(conversation); return }
         if (!selectedThreadIds.add(conversation.threadId)) {
             selectedThreadIds.remove(conversation.threadId)
         }
@@ -811,6 +826,10 @@ class MainActivity : BaseActivity() {
     // ─── Conversation actions ───────────────────────────────────────────────
 
     private fun toggleReadState(conversation: Conversation) {
+        conversation.group?.let { group ->
+            DumberGroupStore(this).use { it.setRead(group, !conversation.read) }
+            loadConversations(); return
+        }
         val markUnread = conversation.read   // menu shows "mark as unread" when currently read
         lifecycleScope.launch(Dispatchers.IO) {
             val dao = App.get().database.conversationsDao()
@@ -829,18 +848,23 @@ class MainActivity : BaseActivity() {
     }
 
     private fun togglePin(conversation: Conversation) {
-        Prefs.get().setThreadPinned(conversation.threadId, !conversation.pinned)
+        if (conversation.group != null) DumberGroupStore(this).use { it.flag(conversation.group!!, "pinned", !conversation.pinned) }
+        else Prefs.get().setThreadPinned(conversation.threadId, !conversation.pinned)
         loadConversations()
     }
 
     private fun toggleArchive(conversation: Conversation) {
         val archive = !conversation.archived
-        Prefs.get().setThreadArchived(conversation.threadId, archive)
+        fun setArchived(value: Boolean) {
+            if (conversation.group != null) DumberGroupStore(this).use { it.flag(conversation.group!!, "archived", value) }
+            else Prefs.get().setThreadArchived(conversation.threadId, value)
+        }
+        setArchived(archive)
         loadConversations()
         if (archive) {
             Snackbar.make(binding.root, R.string.conversation_archived, Snackbar.LENGTH_LONG)
                 .setAction(R.string.undo) {
-                    Prefs.get().setThreadArchived(conversation.threadId, false)
+                    setArchived(false)
                     loadConversations()
                 }
                 .show()
@@ -848,6 +872,10 @@ class MainActivity : BaseActivity() {
     }
 
     private fun openConversationDetails(conversation: Conversation) {
+        conversation.group?.let { group ->
+            startActivity(Intent(this, ConversationDetailsActivity::class.java)
+                .putExtra("account", group.account).putExtra("room", group.room)); return
+        }
         startActivity(Intent(this, ConversationDetailsActivity::class.java).apply {
             putExtra(ThreadActivity.EXTRA_THREAD_ID, conversation.threadId)
             putExtra(ThreadActivity.EXTRA_THREAD_TITLE, conversation.title)
@@ -859,8 +887,8 @@ class MainActivity : BaseActivity() {
     }
 
     private fun toggleMute(conversation: Conversation) {
-        val currentlyMuted = Prefs.get().isThreadMuted(conversation.threadId)
-        Prefs.get().setThreadMuted(conversation.threadId, !currentlyMuted)
+        if (conversation.group != null) DumberGroupStore(this).use { it.flag(conversation.group!!, "muted", !conversation.muted) }
+        else Prefs.get().setThreadMuted(conversation.threadId, !conversation.muted)
         loadConversations()
     }
 
@@ -872,6 +900,7 @@ class MainActivity : BaseActivity() {
     }
 
     private fun moveToRecycleBin(conversation: Conversation) {
+        if (conversation.group != null) { openThread(conversation); return }
         AlertDialog.Builder(this)
             .setTitle(if (Prefs.get().recycleBinEnabled) R.string.move_to_recycle_bin else R.string.delete)
             .setMessage(conversation.title)

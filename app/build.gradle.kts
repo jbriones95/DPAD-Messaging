@@ -22,6 +22,8 @@ android {
         targetSdk = 34
         versionCode = getSecret("EXPERIMENTAL_VERSION_CODE")?.toIntOrNull() ?: 10513000
         versionName = "0.5.13"
+        // Creation and reception use the current typed group API.
+        buildConfigField("boolean", "DUMBER_GROUP_CREATION", providers.gradleProperty("dumberGroupCreation").orElse("true").get())
         buildConfigField("String", "UPDATE_CHANNEL", "\"production\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -68,7 +70,8 @@ android {
             buildConfigField("String", "UPDATE_CHANNEL", "\"production\"")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
+                "proguard-rules.pro",
+                "../vendor/dumber-chat-core/bindings/kotlin/consumer-rules.pro"
             )
         }
         create("experimental") {
@@ -79,6 +82,7 @@ android {
             buildConfigField("String", "UPDATE_CHANNEL", "\"experimental\"")
         }
         debug {
+            applicationIdSuffix = providers.gradleProperty("debugApplicationIdSuffix").orNull
             isDebuggable = true
         }
     }
@@ -109,8 +113,9 @@ android {
 
     sourceSets {
         getByName("main") {
-            java.srcDirs("src/main/kotlin")
+            java.srcDirs("src/main/kotlin", "../vendor/dumber-chat-core/bindings/kotlin/src/main/kotlin")
         }
+        getByName("test") { java.srcDir("../vendor/dumber-chat-core/bindings/kotlin/src/test/kotlin") }
         getByName("androidTest") {
             assets.srcDir("$projectDir/schemas")
         }
@@ -167,3 +172,15 @@ dependencies {
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
     androidTestImplementation("androidx.room:room-testing:2.6.1")
 }
+
+// A clean checkout must include the encryption engine for every supported Android ABI.
+val buildDumberCore by tasks.registering(Exec::class) {
+    workingDir(rootDir)
+    commandLine("bash", "scripts/build-dumber-core.sh")
+    environment("DUMBER_RUST_TARGETS", providers.gradleProperty("dumberRustTargets").orElse("aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android").get())
+    inputs.files(fileTree(rootProject.file("vendor/dumber-chat-core")) { exclude("target/**", ".git/**") })
+    inputs.file(rootProject.file("scripts/build-dumber-core.sh"))
+    inputs.property("targets", providers.gradleProperty("dumberRustTargets").orElse("aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android"))
+    outputs.files(listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64").map { file("src/main/jniLibs/$it/libdumber_chat_core.so") })
+}
+tasks.named("preBuild") { dependsOn(buildDumberCore) }

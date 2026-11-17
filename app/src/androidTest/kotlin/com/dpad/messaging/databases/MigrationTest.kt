@@ -21,6 +21,40 @@ class MigrationTest {
     )
 
     @Test
+    fun migrateDumberChatV7To9Converges() {
+        val oldDb = helper.createDatabase(testDb, 6)
+        // The dumber.chat line created version 7 as the original schema plus
+        // messages.is_encrypted. Verify that shape upgrades to the merged schema.
+        oldDb.execSQL("ALTER TABLE messages ADD COLUMN is_encrypted INTEGER NOT NULL DEFAULT 0")
+        oldDb.execSQL("PRAGMA user_version = 7")
+        oldDb.close()
+
+        helper.runMigrationsAndValidate(
+            testDb,
+            9,
+            true,
+            MessagesDatabase.MIGRATION_7_8,
+            MessagesDatabase.MIGRATION_8_9
+        ).use { db ->
+            db.query("PRAGMA table_info(messages)").use { cursor ->
+                assertTrue(hasColumn(cursor, "is_encrypted"))
+            }
+            db.query("PRAGMA table_info(recycle_bin_messages)").use { cursor ->
+                assertTrue(hasColumn(cursor, "provider_id"))
+                assertTrue(hasColumn(cursor, "participants_json"))
+            }
+        }
+    }
+
+    private fun hasColumn(cursor: android.database.Cursor, name: String): Boolean {
+        val index = cursor.getColumnIndex("name")
+        while (cursor.moveToNext()) {
+            if (cursor.getString(index) == name) return true
+        }
+        return false
+    }
+
+    @Test
     fun migrate5To6() {
         helper.createDatabase(testDb, 5).close()
 

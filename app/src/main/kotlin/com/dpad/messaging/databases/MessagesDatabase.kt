@@ -103,42 +103,18 @@ abstract class MessagesDatabase : RoomDatabase() {
 
         val MIGRATION_6_7 = object : Migration(6, 7) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("ALTER TABLE recycle_bin_messages RENAME TO recycle_bin_messages_v6")
-                db.execSQL(
-                    """
-                    CREATE TABLE IF NOT EXISTS `recycle_bin_messages` (
-                        `id` INTEGER NOT NULL,
-                        `provider_id` INTEGER NOT NULL,
-                        `thread_id` INTEGER NOT NULL,
-                        `is_mms` INTEGER NOT NULL,
-                        `is_conversation` INTEGER NOT NULL,
-                        `message_type` INTEGER NOT NULL,
-                        `was_read` INTEGER NOT NULL,
-                        `address` TEXT NOT NULL,
-                        `sender_name` TEXT NOT NULL,
-                        `body` TEXT NOT NULL,
-                        `date` INTEGER NOT NULL,
-                        `deleted_ts` INTEGER NOT NULL,
-                        PRIMARY KEY(`id`)
-                    )
-                    """.trimIndent()
-                )
-                db.execSQL(
-                    """
-                    INSERT INTO `recycle_bin_messages` (
-                        `id`, `provider_id`, `thread_id`, `is_mms`, `is_conversation`,
-                        `message_type`, `was_read`, `address`, `sender_name`, `body`, `date`, `deleted_ts`
-                    )
-                    SELECT `id`, 0, -1, 0, 0, 1, 1, `address`, `sender_name`, `body`, `date`, `deleted_ts`
-                    FROM `recycle_bin_messages_v6`
-                    """.trimIndent()
-                )
-                db.execSQL("DROP TABLE `recycle_bin_messages_v6`")
+                upgradeRecycleBinToV7(db)
             }
         }
 
         val MIGRATION_7_8 = object : Migration(7, 8) {
             override fun migrate(db: SupportSQLiteDatabase) {
+                // The dumber.chat line created a different version 7: the original
+                // recycle-bin shape plus messages.is_encrypted. Convert that shape
+                // first so both histories converge on the same v8/v9 schema.
+                if (!hasColumn(db, "recycle_bin_messages", "provider_id")) {
+                    upgradeRecycleBinToV7(db)
+                }
                 db.execSQL("ALTER TABLE recycle_bin_messages RENAME TO recycle_bin_messages_v7")
                 db.execSQL(
                     """
@@ -179,8 +155,59 @@ abstract class MessagesDatabase : RoomDatabase() {
 
         val MIGRATION_8_9 = object : Migration(8, 9) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("ALTER TABLE messages ADD COLUMN is_encrypted INTEGER NOT NULL DEFAULT 0")
+                // The dumber.chat line already added this column at its version 7.
+                if (!hasColumn(db, "messages", "is_encrypted")) {
+                    db.execSQL("ALTER TABLE messages ADD COLUMN is_encrypted INTEGER NOT NULL DEFAULT 0")
+                }
             }
+        }
+
+        private fun upgradeRecycleBinToV7(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE recycle_bin_messages RENAME TO recycle_bin_messages_v6")
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `recycle_bin_messages` (
+                    `id` INTEGER NOT NULL,
+                    `provider_id` INTEGER NOT NULL,
+                    `thread_id` INTEGER NOT NULL,
+                    `is_mms` INTEGER NOT NULL,
+                    `is_conversation` INTEGER NOT NULL,
+                    `message_type` INTEGER NOT NULL,
+                    `was_read` INTEGER NOT NULL,
+                    `address` TEXT NOT NULL,
+                    `sender_name` TEXT NOT NULL,
+                    `body` TEXT NOT NULL,
+                    `date` INTEGER NOT NULL,
+                    `deleted_ts` INTEGER NOT NULL,
+                    PRIMARY KEY(`id`)
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                INSERT INTO `recycle_bin_messages` (
+                    `id`, `provider_id`, `thread_id`, `is_mms`, `is_conversation`,
+                    `message_type`, `was_read`, `address`, `sender_name`, `body`, `date`, `deleted_ts`
+                )
+                SELECT `id`, 0, -1, 0, 0, 1, 1, `address`, `sender_name`, `body`, `date`, `deleted_ts`
+                FROM `recycle_bin_messages_v6`
+                """.trimIndent()
+            )
+            db.execSQL("DROP TABLE `recycle_bin_messages_v6`")
+        }
+
+        private fun hasColumn(
+            db: SupportSQLiteDatabase,
+            table: String,
+            column: String
+        ): Boolean {
+            db.query("PRAGMA table_info(`$table`)").use { cursor ->
+                val nameIndex = cursor.getColumnIndex("name")
+                while (cursor.moveToNext()) {
+                    if (cursor.getString(nameIndex) == column) return true
+                }
+            }
+            return false
         }
 
         @Volatile

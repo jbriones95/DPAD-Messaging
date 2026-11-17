@@ -67,7 +67,21 @@ class NewConversationActivity : BaseActivity() {
 
         setupToolbar()
         setupInputs()
+        if (intent.getBooleanExtra(EXTRA_PICK_RECIPIENTS, false)) {
+            binding.tvRecipientHint.setText(R.string.dumber_group_choose_participants)
+        }
         handleIncomingIntent(intent)
+        savedInstanceState?.getStringArrayList("selected_recipients")?.let { restored ->
+            selectedRecipients.clear()
+            restored.forEach { addRecipient(it) }
+            renderRecipientChips()
+            updateSendButton()
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putStringArrayList("selected_recipients", ArrayList(selectedRecipients))
+        super.onSaveInstanceState(outState)
     }
 
     override fun onResume() {
@@ -187,9 +201,9 @@ class NewConversationActivity : BaseActivity() {
         val hasRecipients = selectedRecipients.isNotEmpty() ||
             parseRecipients(binding.etRecipient.text?.toString().orEmpty()).isNotEmpty()
         val accentColor = ThemeManager.accentColor(this)
-        binding.btnSend.isEnabled = hasRecipients
+        binding.btnSend.isEnabled = hasRecipients || intent.getBooleanExtra(EXTRA_PICK_RECIPIENTS, false)
         binding.btnSend.setColorFilter(
-            if (hasRecipients) accentColor
+            if (binding.btnSend.isEnabled) accentColor
             else getColor(R.color.sendButtonDisabled)
         )
     }
@@ -197,6 +211,11 @@ class NewConversationActivity : BaseActivity() {
     private fun sendAndOpen() {
         addRecipientFromInput()
         val recipients = selectedRecipients.toList()
+        if (intent.getBooleanExtra(EXTRA_PICK_RECIPIENTS, false)) {
+            setResult(Activity.RESULT_OK, Intent().putStringArrayListExtra(EXTRA_PREFILL_RECIPIENTS, ArrayList(recipients)))
+            finish()
+            return
+        }
         if (recipients.isEmpty()) return
 
         val attachment = pendingAttachmentUri
@@ -496,6 +515,7 @@ class NewConversationActivity : BaseActivity() {
     }
 
     companion object {
+        const val EXTRA_PICK_RECIPIENTS = "pick_recipients"
         const val EXTRA_PREFILL_BODY = "extra_prefill_body"
         const val EXTRA_PREFILL_RECIPIENTS = "extra_prefill_recipients"
     }

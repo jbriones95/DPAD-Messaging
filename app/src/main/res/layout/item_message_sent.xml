@@ -50,10 +50,11 @@
             android:focusableInTouchMode="true"
             android:visibility="gone" />
 
-        <!-- Status + timestamp row -->
+        <!-- Timestamp, delivery status, and encrypted transport -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_gravity="end"
             android:focusable="false"
             android:gravity="end"
             android:orientation="horizontal">
@@ -76,6 +77,19 @@
                 android:focusable="false"
                 android:textColor="@color/statusDelivered"
                  android:textSize="@dimen/text_size_meta"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/tv_encrypted"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/padding_tiny"
+                android:focusable="false"
+                android:includeFontPadding="false"
+                android:text="@string/dumber_encrypted"
+                android:textColor="@color/messageMetaOnSent"
+                android:textSize="@dimen/text_size_meta"
+                android:textStyle="bold"
                 android:visibility="gone" />
 
         </LinearLayout>

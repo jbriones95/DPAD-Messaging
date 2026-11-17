@@ -1,0 +1,7 @@
+/target/
+/var/
+.env
+.env.*
+*.sqlite3*
+*.db
+*.db-*

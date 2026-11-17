@@ -62,6 +62,7 @@ class SmsReceiver : BroadcastReceiver() {
         val pendingResult = goAsync()
         AppCoroutineScopes.io.launch {
             try {
+                runCatching { com.dpad.messaging.dumber.DumberVerification.receive(context, body, timestamp, com.dpad.messaging.dumber.DumberSubscriptions.receivedSubscription(intent)) }
                 processMessage(context, address, body, timestamp)
             } finally {
                 pendingResult.finish()

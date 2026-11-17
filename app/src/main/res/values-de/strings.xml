@@ -325,4 +325,22 @@
     <string name="install_update">Update installieren</string>
     <string name="update_check_failed">Update-Suche fehlgeschlagen: %1$s</string>
     <string name="update_installer_unavailable">Android konnte den Paketinstaller nicht öffnen</string>
+    <!-- dumber.chat -->
+    <string name="dumber_encrypted">verschlüsselt</string>
+    <string name="dumber_status_encrypted">Ende-zu-Ende-verschlüsselt</string>
+    <string name="dumber_status_sms">SMS/MMS – nicht Ende-zu-Ende-verschlüsselt</string>
+    <string name="dumber_status_checking">Verfügbarkeit wird geprüft…</string>
+    <string name="dumber_status_unknown">Verfügbarkeit unbekannt</string>
+    <string name="dumber_recheck">Verfügbarkeit erneut prüfen</string>
+    <string name="dumber_recheck_detail">Dies verbraucht eine Ihrer 50 täglichen Telefonabfragen. Bekannte Empfänger können bereits verschlüsselte Nachrichten empfangen, ohne dass eine weitere Abfrage nötig ist.</string>
+    <string name="dumber_send_pending">Nachricht wartet auf Ihre Entscheidung</string>
+    <string name="dumber_send_pending_detail">Öffnen Sie die Unterhaltung, um die verschlüsselte Zustellung zu wiederholen oder unverschlüsselte SMS zu wählen.</string>
+    <string name="dumber_pending_count">Ungesendet (%1$d)</string>
+    <string name="dumber_retry_encrypted">Verschlüsselt erneut senden</string>
+    <string name="dumber_send_sms">Als SMS senden</string>
+    <string name="dumber_sms_confirmation">Diese Nachricht als unverschlüsselte SMS senden? Es können Gebühren Ihres Mobilfunkanbieters anfallen.</string>
+    <string name="dumber_sms_uncertain">Die verschlüsselte Zustellung konnte nicht bestätigt werden. Der Empfänger hat die Nachricht möglicherweise bereits erhalten. Eine unverschlüsselte SMS kann zu einer doppelten Zustellung führen. Es können Gebühren Ihres Mobilfunkanbieters anfallen.</string>
+    <string name="dumber_status_sim_unconnected">SMS · SIM nicht verbunden</string>
+    <string name="dumber_recipient_unavailable">Empfänger ist bei dumber.chat nicht mehr verfügbar</string>
+    <string name="dumber_recipient_unavailable_sms">Diese Nachricht als normale SMS senden?</string>
 </resources>

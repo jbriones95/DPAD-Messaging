@@ -92,6 +92,7 @@ class ThreadActivity : BaseActivity() {
     private lateinit var binding: ActivityThreadBinding
     private lateinit var threadAdapter: ThreadAdapter
 
+    private var dumberUi: com.dpad.messaging.dumber.DumberConversationUi? = null
     private var threadId: Long = -1L
     private var threadTitle: String = ""
     private var phoneNumber: String = ""
@@ -151,6 +152,11 @@ class ThreadActivity : BaseActivity() {
         extractThreadExtras(intent)
 
         if (threadId == -1L) { finish(); return }
+        dumberUi = com.dpad.messaging.dumber.DumberConversationUi(
+            this, binding.dumberStatus, binding.dumberPending,
+            { phoneNumber }, { threadId }, { selectedSubId },
+            { participants.size > 1 || pendingAttachmentUri != null || pendingAttachmentUris.isNotEmpty() }
+        )
 
         // Permission requester: request READ_MEDIA_* (Android 13+) or READ_EXTERNAL_STORAGE (older)
         permissionRequestLauncher = registerForActivityResult(
@@ -321,6 +327,7 @@ class ThreadActivity : BaseActivity() {
         loadMessages()
         markThreadRead()
         handleRetryIntent(intent)
+        dumberUi?.open()
     }
 
     override fun onResume() {
@@ -328,6 +335,7 @@ class ThreadActivity : BaseActivity() {
         EventBus.getDefault().register(this)
         applyAccent()
         markThreadRead()
+        dumberUi?.open()
     }
 
     override fun onPause() {
@@ -473,13 +481,22 @@ class ThreadActivity : BaseActivity() {
             if (threadAdapter.itemCount > 0) binding.rvMessages.focusLastItem()
             else binding.btnBack.requestFocus()
         }
+        for (button in listOf(binding.dumberStatus, binding.dumberPending)) {
+            button.setOnKeyListener { _, keyCode, event ->
+                if (keyCode == KeyEvent.KEYCODE_DPAD_UP && event.action == KeyEvent.ACTION_DOWN) { goUpFromCompose(); true } else false
+            }
+        }
         binding.etMessage.setOnKeyListener { _, keyCode, event ->
             if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
             val typingWithIme = binding.etMessage.isTypingWithIme()
             when (keyCode) {
                 KeyEvent.KEYCODE_DPAD_UP -> {
-                    // UP returns to the newest message instead of jumping to the toolbar.
-                    goUpFromCompose(); true
+                    when {
+                        binding.dumberStatus.visibility == View.VISIBLE -> binding.dumberStatus.requestFocus()
+                        binding.dumberPending.visibility == View.VISIBLE -> binding.dumberPending.requestFocus()
+                        else -> goUpFromCompose()
+                    }
+                    true
                 }
                 KeyEvent.KEYCODE_DPAD_CENTER -> {
                     // CENTER inserts newline in app
@@ -1284,6 +1301,7 @@ class ThreadActivity : BaseActivity() {
      * Also updates the character counter for SMS segment tracking.
      */
     private fun updateSendButtonState() {
+        dumberUi?.render()
         val hasText       = binding.etMessage.text?.isNotBlank() == true
         val hasAttachment = pendingAttachmentUri != null || pendingAttachmentUris.isNotEmpty()
         val hasChips      = binding.chipsContainer.childCount > 0
@@ -1815,7 +1833,7 @@ class ThreadActivity : BaseActivity() {
                 runCatching { voiceAttachmentFileForSend?.delete() }
             }
             scrollToBottomAfterSend = true
-            withContext(Dispatchers.Main) { loadMessages() }
+            withContext(Dispatchers.Main) { loadMessages(); dumberUi?.refreshPending(prompt = true) }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -2266,6 +2284,7 @@ class ThreadActivity : BaseActivity() {
             .setTitle(R.string.select_sim)
             .setSingleChoiceItems(labels, currentIdx) { dialog, which ->
                 selectedSubId = simEntries[which].first
+                dumberUi?.open()
                 binding.btnSim.text = simEntries[which].second
                 dialog.dismiss()
             }
@@ -2282,6 +2301,8 @@ class ThreadActivity : BaseActivity() {
         // Incoming messages delivered while this conversation is already open
         // are visible to the user, so keep the provider and notification state read.
         markThreadRead()
+        dumberUi?.refreshPending(prompt = true)
+        dumberUi?.render()
         // If the newest message is already visible (user is at the bottom, e.g.
         // awaiting a reply), scroll so the freshly-received message appears
         // instead of being left below the viewport.
