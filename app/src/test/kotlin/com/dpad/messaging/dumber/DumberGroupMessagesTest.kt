@@ -59,7 +59,7 @@ class DumberGroupMessagesTest {
         failed.itemView.findViewById<android.view.View>(com.dpad.messaging.R.id.bubble_container).performClick()
         assertEquals(1L, clicked)
         // A recycled received bubble must not retain its previous encryption label.
-        (received as com.dpad.messaging.adapters.ThreadAdapter.ReceivedViewHolder).bind(display.first().copy(isEncrypted = false), 1)
+        (received as com.dpad.messaging.adapters.ThreadAdapter.ReceivedViewHolder).bind(com.dpad.messaging.models.ThreadItem.ReceivedMessage(display.first().copy(isEncrypted = false)), 1)
         assertEquals(android.view.View.GONE, received.itemView.findViewById<android.view.View>(com.dpad.messaging.R.id.tv_encrypted).visibility)
     }
 

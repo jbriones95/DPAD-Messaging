@@ -9,6 +9,7 @@ import com.dpad.messaging.adapters.ThreadAdapter
 import com.dpad.messaging.databinding.ItemMessageReceivedBinding
 import com.dpad.messaging.databinding.ItemMessageSentBinding
 import com.dpad.messaging.models.Message
+import com.dpad.messaging.models.ThreadItem
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -44,15 +45,15 @@ class DumberUiTest {
                 val sentHolder = adapter.SentViewHolder(sent)
                 val receivedHolder = adapter.ReceivedViewHolder(received)
                 val encrypted = Message(id = 1, threadId = 1, type = Message.TYPE_SENT, body = "test", isEncrypted = true)
-                sentHolder.bind(encrypted, 0)
-                receivedHolder.bind(encrypted.copy(type = Message.TYPE_INBOX), 0)
+                sentHolder.bind(ThreadItem.SentMessage(encrypted), 0)
+                receivedHolder.bind(ThreadItem.ReceivedMessage(encrypted.copy(type = Message.TYPE_INBOX)), 0)
                 assertEquals(View.VISIBLE, sent.tvEncrypted.visibility)
                 assertEquals(View.VISIBLE, received.tvEncrypted.visibility)
                 assertEquals(received.tvSenderName.textSize, received.tvEncrypted.textSize, 0f)
                 assertEquals(received.tvSenderName.typeface.style, received.tvEncrypted.typeface.style)
                 assertEquals("encrypted", sent.tvEncrypted.text.toString())
-                sentHolder.bind(encrypted.copy(isEncrypted = false), 0)
-                receivedHolder.bind(encrypted.copy(type = Message.TYPE_INBOX, isEncrypted = false), 0)
+                sentHolder.bind(ThreadItem.SentMessage(encrypted.copy(isEncrypted = false)), 0)
+                receivedHolder.bind(ThreadItem.ReceivedMessage(encrypted.copy(type = Message.TYPE_INBOX, isEncrypted = false)), 0)
                 assertEquals(View.GONE, sent.tvEncrypted.visibility)
                 assertEquals(View.GONE, received.tvEncrypted.visibility)
             }

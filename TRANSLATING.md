@@ -8,15 +8,15 @@ DPAD Messaging is a community project, and translations are welcome. The app shi
 
 | Language | Folder | Status |
 | --- | --- | --- |
-| English | `app/src/main/res/values/` | Source of truth (312 strings) |
-| German | `app/src/main/res/values-de/` | Complete (312/312) |
-| Spanish | `app/src/main/res/values-es/` | Complete (312/312) |
+| English | `app/src/main/res/values/` | Source of truth (322 strings) |
+| German | `app/src/main/res/values-de/` | Complete (322/322) |
+| Spanish | `app/src/main/res/values-es/` | Complete (322/322) |
 
 German and Spanish are complete. More languages are welcome — [open an issue](https://github.com/jbriones95/DPAD-Messaging/issues/new?template=translation.yml) to start one.
 
 ## What needs translating
 
-All user-visible text is in [`app/src/main/res/values/strings.xml`](app/src/main/res/values/strings.xml). The app currently has **312 strings**, no plurals and no string arrays. The [full list](#full-list-of-english-strings) is at the bottom of this document, grouped by screen.
+All user-visible text is in [`app/src/main/res/values/strings.xml`](app/src/main/res/values/strings.xml). The app currently has **322 strings**, no plurals and no string arrays. The [full list](#full-list-of-english-strings) is at the bottom of this document, grouped by screen.
 
 ## How to contribute
 
@@ -304,6 +304,16 @@ This list mirrors `app/src/main/res/values/strings.xml`. Keys in `backticks` are
 | `send_on_enter_summary` | Press Enter key to send message | — |
 | `character_counter` | Character Counter | — |
 | `character_counter_summary` | Show SMS length and segment count | — |
+| `convert_reactions` | Show Reactions on Messages | — |
+| `convert_reactions_summary` | Show iPhone and Google Messages reaction texts like Liked “…” as a reaction on the original message. Turn off to see them as normal messages. | — |
+| `message_reactions_description` | %1$s. Reactions: %2$s | Keep placeholders: `%1$s`, `%2$s` |
+| `reaction_from` | %1$s from %2$s | Keep placeholders: `%1$s`, `%2$s` |
+| `reaction_you` | You | — |
+| `view_reactions` | View reactions | — |
+| `react` | React | — |
+| `remove_reaction` | Remove my reaction | — |
+| `reactions_title` | Reactions | — |
+| `message_edited_time` | Edited · %1$s | Keep placeholders: `%1$s` |
 | `send_group_message_mms` | Group Text via MMS | — |
 | `send_group_message_mms_summary` | Keep text-only group replies in one thread. Turn off to send individual SMS instead. | — |
 | `auto_download_mms` | Automatically Download MMS | — |
@@ -483,7 +493,7 @@ This list mirrors `app/src/main/res/values/strings.xml`. Keys in `backticks` are
 | `dumber_recipient_unavailable` | Recipient no longer available on dumber.chat | — |
 | `dumber_recipient_unavailable_sms` | Send this message as regular SMS? | — |
 
-<!-- 312 strings -->
+<!-- 322 strings -->
 
 ## Keeping this list current
 
