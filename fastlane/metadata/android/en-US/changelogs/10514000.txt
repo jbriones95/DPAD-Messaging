@@ -1,0 +1,3 @@
+Adds optional encrypted group chat through dumber.chat: create a group, invite registered contacts, accept or decline invitations, and manage members. Group texts are end-to-end encrypted and never fall back to SMS/MMS.
+
+Existing experimental dumber.chat installs can update without losing data. Regular SMS/MMS is unchanged when dumber.chat is not connected.

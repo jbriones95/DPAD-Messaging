@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.14
+
+- Adds optional encrypted group chat through dumber.chat. Create a group, invite registered contacts, and accept or decline invitations. Admins can rename, invite, remove and appoint admins; members can leave. Group messages are end-to-end encrypted and never fall back to SMS/MMS.
+- Includes the direct encrypted messaging improvements from the dumber.chat line, with availability checks and retry controls.
+- Existing experimental dumber.chat installs can update to this release without losing data: both earlier database layouts are upgraded to the current one.
+- Regular SMS/MMS, including carrier group messaging, is unchanged when dumber.chat is not connected.
+
 ## 0.5.13
 
 - The photo attachment option is now simply called **Photo**. Audio remains a separate menu option.
