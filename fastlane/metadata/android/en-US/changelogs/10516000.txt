@@ -1,0 +1,1 @@
+Pressing OK/center in the message box now sends the message when there is text or an attachment, instead of adding a new line. While a T9 keyboard is still composing or selecting a word, OK continues to select the word. Enter still adds a new line.

@@ -20,8 +20,8 @@ android {
         applicationId = "com.dpadsms"
         minSdk = 23
         targetSdk = 34
-        versionCode = getSecret("EXPERIMENTAL_VERSION_CODE")?.toIntOrNull() ?: 10515000
-        versionName = "0.5.15"
+        versionCode = getSecret("EXPERIMENTAL_VERSION_CODE")?.toIntOrNull() ?: 10516000
+        versionName = "0.5.16"
         // Creation and reception use the current typed group API.
         buildConfigField("boolean", "DUMBER_GROUP_CREATION", providers.gradleProperty("dumberGroupCreation").orElse("true").get())
         buildConfigField("String", "UPDATE_CHANNEL", "\"production\"")

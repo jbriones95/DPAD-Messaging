@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.16
 
 - Pressing the center/OK key in the message box now sends the message when there is text or an attachment, instead of inserting a new line. While a T9/TT9 keyboard is composing or selecting a word, the center key still belongs to the keyboard. Enter still inserts a newline.
 
