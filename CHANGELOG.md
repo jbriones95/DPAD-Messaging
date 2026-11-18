@@ -1,16 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- Pressing the center/OK key in the message box now sends the message when there is text or an attachment, instead of inserting a new line. While a T9/TT9 keyboard is composing or selecting a word, the center key still belongs to the keyboard. Enter still inserts a newline.
+
+## 0.5.15
+
+- Reactions from iPhones and Google Messages (for example **Liked “See you at 5”** or **👍 to “See you at 5”**) now appear as a reaction on the original message instead of as a separate text. Hold OK on a message and choose **View reactions** to see who reacted. Turn this off under Settings → **Show Reactions on Messages** to see the original texts.
+- React to a received message: hold OK on it, choose **React** and pick an emoji. **Remove my reaction** takes it back. Reactions are sent as a normal text in the Google Messages format.
+
 ## 0.5.14
 
 - Adds optional encrypted group chat through dumber.chat. Create a group, invite registered contacts, and accept or decline invitations. Admins can rename, invite, remove and appoint admins; members can leave. Group messages are end-to-end encrypted and never fall back to SMS/MMS.
 - Includes the direct encrypted messaging improvements from the dumber.chat line, with availability checks and retry controls.
 - Existing experimental dumber.chat installs can update to this release without losing data: both earlier database layouts are upgraded to the current one.
 - Regular SMS/MMS, including carrier group messaging, is unchanged when dumber.chat is not connected.
-
-## 0.5.15
-
-- Reactions from iPhones and Google Messages (for example **Liked “See you at 5”** or **👍 to “See you at 5”**) now appear as a reaction on the original message instead of as a separate text. Hold OK on a message and choose **View reactions** to see who reacted. Turn this off under Settings → **Show Reactions on Messages** to see the original texts.
-- React to a received message: hold OK on it, choose **React** and pick an emoji. **Remove my reaction** takes it back. Reactions are sent as a normal text in the Google Messages format.
 
 ## 0.5.13
 

@@ -32,6 +32,18 @@ class DpadComposeEditText @JvmOverloads constructor(
         return accepting || active || imeVisible
     }
 
+    /**
+     * True while an input method is composing a word (for example TT9/T9
+     * candidate selection). The center key belongs to the keyboard in that
+     * state and must not send the message.
+     */
+    fun hasActiveComposition(): Boolean {
+        val editable = text ?: return false
+        val start = android.view.inputmethod.BaseInputConnection.getComposingSpanStart(editable)
+        val end = android.view.inputmethod.BaseInputConnection.getComposingSpanEnd(editable)
+        return start >= 0 && end >= 0 && start != end
+    }
+
     override fun onKeyPreIme(keyCode: Int, event: KeyEvent): Boolean {
         if (isTypingWithIme()) {
             // TT9 active: 

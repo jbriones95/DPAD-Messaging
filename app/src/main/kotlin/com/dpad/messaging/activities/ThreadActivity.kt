@@ -505,8 +505,18 @@ class ThreadActivity : BaseActivity() {
                     true
                 }
                 KeyEvent.KEYCODE_DPAD_CENTER -> {
-                    // CENTER inserts newline in app
-                    insertNewLine(); true
+                    if (binding.etMessage.hasActiveComposition()) {
+                        // T9/TT9 is selecting or editing a word: the keyboard owns
+                        // the center key while a composing region is active.
+                        false
+                    } else {
+                        val hasContent = binding.etMessage.text?.isNotBlank() == true ||
+                            pendingAttachmentUri != null ||
+                            pendingAttachmentUris.isNotEmpty() ||
+                            binding.chipsContainer.childCount > 0
+                        if (hasContent) sendMessage() else insertNewLine()
+                        true
+                    }
                 }
                 KeyEvent.KEYCODE_ENTER,
                 KeyEvent.KEYCODE_NUMPAD_ENTER -> {
