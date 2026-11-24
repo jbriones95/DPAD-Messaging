@@ -1,5 +1,6 @@
 package com.dpad.messaging.receivers
 
+import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.provider.Telephony
@@ -52,24 +53,19 @@ class SmsReceiveWorker(
             return@withContext Result.success()
         }
 
-        val threadId = try {
-            resolveThreadId(address)
+        val stored = try {
+            persistMessage(address, body, timestamp, resolveThreadId(address))
         } catch (error: Exception) {
-            Log.e(TAG, "SMS thread resolution failed for $address", error)
+            Log.e(TAG, "SMS provider write failed for $address", error)
             return@withContext if (runAttemptCount < MAX_ATTEMPTS) Result.retry() else Result.failure()
         }
-        val inserted = try {
-            insertIfAbsent(address, body, timestamp, threadId)
-        } catch (error: Exception) {
-            Log.e(TAG, "SMS provider insert failed for $address", error)
-            return@withContext if (runAttemptCount < MAX_ATTEMPTS) Result.retry() else Result.failure()
-        }
-        if (inserted) {
-            // Make the message visible before optional contact/filter/notification work.
-            MessageCache.invalidate(threadId)
-            EventBus.getDefault().post(RefreshConversations())
-            EventBus.getDefault().post(RefreshMessages(threadId))
-        }
+        val threadId = stored.threadId
+
+        // A provider may have committed the row before returning null, or another
+        // SMS app may have written it. Refresh the open thread in every case.
+        MessageCache.invalidate(threadId)
+        EventBus.getDefault().post(RefreshConversations())
+        EventBus.getDefault().post(RefreshMessages(threadId))
 
         runCatching {
             com.dpad.messaging.dumber.DumberVerification.receive(
@@ -79,6 +75,7 @@ class SmsReceiveWorker(
                 inputData.getInt(KEY_SUBSCRIPTION_ID, -1)
             )
         }
+        if (!stored.inserted) return@withContext Result.success()
 
         val blockedNumbers = runCatching { App.get().database.blockedNumbersDao().getAll() }.getOrNull()
         val blockedKeywords = runCatching { App.get().database.blockedKeywordsDao().getAll() }.getOrNull()
@@ -106,15 +103,22 @@ class SmsReceiveWorker(
         Result.success()
     }
 
-    private fun insertIfAbsent(address: String, body: String, timestamp: Long, threadId: Long): Boolean {
-        val duplicate = applicationContext.contentResolver.query(
-            Telephony.Sms.CONTENT_URI,
-            arrayOf(Telephony.Sms._ID),
-            "${Telephony.Sms.THREAD_ID} = ? AND ${Telephony.Sms.DATE} = ? AND ${Telephony.Sms.ADDRESS} = ? AND ${Telephony.Sms.BODY} = ?",
-            arrayOf(threadId.toString(), timestamp.toString(), address, body),
-            null
-        )?.use { it.moveToFirst() } == true
-        if (duplicate) return false
+    private data class StoredSms(
+        val id: Long,
+        val threadId: Long,
+        val body: String,
+        val inserted: Boolean
+    )
+
+    private fun persistMessage(
+        address: String,
+        body: String,
+        timestamp: Long,
+        threadId: Long
+    ): StoredSms {
+        findStoredSms(address, body, timestamp, threadId)?.let { existing ->
+            return repairStoredBody(existing, body, inserted = false)
+        }
 
         val values = ContentValues().apply {
             put(Telephony.Sms.ADDRESS, address)
@@ -126,7 +130,81 @@ class SmsReceiveWorker(
             put(Telephony.Sms.READ, 0)
             put(Telephony.Sms.SEEN, 0)
         }
-        return applicationContext.contentResolver.insert(Telephony.Sms.CONTENT_URI, values) != null
+        val insertedUri = applicationContext.contentResolver.insert(Telephony.Sms.CONTENT_URI, values)
+        if (insertedUri != null) {
+            readStoredSms(insertedUri)?.let { return repairStoredBody(it, body, inserted = true) }
+        }
+
+        // Some OEM providers commit and then return null. Read back before retrying
+        // so WorkManager cannot create a duplicate on its next attempt.
+        findStoredSms(address, body, timestamp, threadId)?.let {
+            return repairStoredBody(it, body, inserted = false)
+        }
+        error("Telephony provider did not store incoming SMS")
+    }
+
+    private fun findStoredSms(
+        address: String,
+        body: String,
+        timestamp: Long,
+        threadId: Long
+    ): StoredSms? {
+        val rows = mutableListOf<StoredSms>()
+        applicationContext.contentResolver.query(
+            Telephony.Sms.CONTENT_URI,
+            arrayOf(Telephony.Sms._ID, Telephony.Sms.THREAD_ID, Telephony.Sms.BODY),
+            "${Telephony.Sms.THREAD_ID} = ? AND ${Telephony.Sms.DATE} = ? AND ${Telephony.Sms.ADDRESS} = ?",
+            arrayOf(threadId.toString(), timestamp.toString(), address),
+            "${Telephony.Sms.DATE} DESC"
+        )?.use { cursor ->
+            val idIndex = cursor.getColumnIndex(Telephony.Sms._ID)
+            val threadIndex = cursor.getColumnIndex(Telephony.Sms.THREAD_ID)
+            val bodyIndex = cursor.getColumnIndex(Telephony.Sms.BODY)
+            while (cursor.moveToNext()) {
+                if (idIndex < 0 || threadIndex < 0) continue
+                rows += StoredSms(
+                    id = cursor.getLong(idIndex),
+                    threadId = cursor.getLong(threadIndex),
+                    body = if (bodyIndex >= 0) cursor.getString(bodyIndex).orEmpty() else "",
+                    inserted = false
+                )
+            }
+        }
+        return rows.firstOrNull { it.body == body }
+            ?: rows.firstOrNull { it.body.isBlank() && body.isNotBlank() }
+            ?: rows.firstOrNull()
+    }
+
+    private fun readStoredSms(uri: Uri): StoredSms? {
+        return applicationContext.contentResolver.query(
+            uri,
+            arrayOf(Telephony.Sms._ID, Telephony.Sms.THREAD_ID, Telephony.Sms.BODY),
+            null,
+            null,
+            null
+        )?.use { cursor ->
+            if (!cursor.moveToFirst()) return@use null
+            val idIndex = cursor.getColumnIndex(Telephony.Sms._ID)
+            val threadIndex = cursor.getColumnIndex(Telephony.Sms.THREAD_ID)
+            val bodyIndex = cursor.getColumnIndex(Telephony.Sms.BODY)
+            if (idIndex < 0 || threadIndex < 0) return@use null
+            StoredSms(
+                id = cursor.getLong(idIndex),
+                threadId = cursor.getLong(threadIndex),
+                body = if (bodyIndex >= 0) cursor.getString(bodyIndex).orEmpty() else "",
+                inserted = true
+            )
+        }
+    }
+
+    private fun repairStoredBody(stored: StoredSms, body: String, inserted: Boolean): StoredSms {
+        if (body.isBlank() || stored.body.isNotBlank()) return stored.copy(inserted = inserted)
+        val uri = ContentUris.withAppendedId(Telephony.Sms.CONTENT_URI, stored.id)
+        val values = ContentValues().apply { put(Telephony.Sms.BODY, body) }
+        applicationContext.contentResolver.update(uri, values, null, null)
+        val repaired = readStoredSms(uri) ?: stored
+        if (repaired.body.isBlank()) error("Telephony provider stored a blank SMS body")
+        return repaired.copy(inserted = inserted)
     }
 
     private fun resolveThreadId(address: String): Long {

@@ -295,7 +295,6 @@ suspend fun Context.getMessagesForThread(
     val smsFallbackProjection = arrayOf(
         Telephony.Sms._ID,
         Telephony.Sms.BODY,
-        Telephony.Sms.SERVICE_CENTER,
         Telephony.Sms.DATE,
         Telephony.Sms.TYPE,
         Telephony.Sms.READ,
@@ -306,7 +305,6 @@ suspend fun Context.getMessagesForThread(
         val extras = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || cappedLimit == Int.MAX_VALUE) null
             else android.os.Bundle().apply {
                 putInt(android.content.ContentResolver.QUERY_ARG_LIMIT, cappedLimit + cappedOffset)
-                putInt(android.content.ContentResolver.QUERY_ARG_OFFSET, cappedOffset)
             }
         val smsCursor = try {
             contentResolver.query(
@@ -318,13 +316,13 @@ suspend fun Context.getMessagesForThread(
                 extras
             )
         } catch (_: Exception) {
+            // Some OEM providers reject query arguments or optional columns.
             contentResolver.query(
                 smsUri,
                 smsFallbackProjection,
                 "${Telephony.Sms.THREAD_ID} = ?",
                 arrayOf(threadId.toString()),
-                "${Telephony.Sms.DATE} DESC",
-                extras
+                "${Telephony.Sms.DATE} DESC"
             )
         }
 
@@ -356,7 +354,7 @@ suspend fun Context.getMessagesForThread(
                     Message(
                         id = messageId,
                         threadId = threadId,
-                        body = if (idxBody >= 0) cursor.getString(idxBody) ?: "" else "",
+                        body = readSmsBody(cursor, idxBody, messageId),
                         type = type,
                         date = if (idxDate >= 0) cursor.getLong(idxDate) else 0L,
                         dateSent = if (idxDateSent >= 0) cursor.getLong(idxDateSent) else 0L,
@@ -476,6 +474,23 @@ suspend fun Context.getMessagesForThread(
     // Sort by time, then provider row ID. Some devices store timestamps with
     // only minute-level precision, so date alone can reverse two messages.
     return messages.sortedWith(compareBy<Message> { it.date }.thenBy { it.id })
+}
+
+/** Retry a blank/null SMS body through the individual row URI on quirky OEM providers. */
+private fun Context.readSmsBody(cursor: android.database.Cursor, bodyIndex: Int, messageId: Long): String {
+    val body = if (bodyIndex >= 0) cursor.getString(bodyIndex).orEmpty() else ""
+    if (body.isNotBlank()) return body
+    return runCatching {
+        contentResolver.query(
+            ContentUris.withAppendedId(Telephony.Sms.CONTENT_URI, messageId),
+            arrayOf(Telephony.Sms.BODY),
+            null,
+            null,
+            null
+        )?.use { row ->
+            if (row.moveToFirst()) row.getString(0).orEmpty() else ""
+        }.orEmpty()
+    }.getOrDefault("")
 }
 
 /** Get the FROM or TO address for an MMS message. */

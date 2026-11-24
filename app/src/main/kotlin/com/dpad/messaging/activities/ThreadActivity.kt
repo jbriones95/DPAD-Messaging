@@ -6,6 +6,7 @@ import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ContentObserver
 import android.content.ContentUris
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -16,6 +17,8 @@ import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.ContactsContract
 import android.provider.MediaStore
 import android.provider.OpenableColumns
@@ -50,6 +53,7 @@ import com.dpad.messaging.extensions.markThreadAsReadInTelephony
 import com.dpad.messaging.helpers.AttachmentPolicy
 import com.dpad.messaging.helpers.ConversationCache
 import com.dpad.messaging.helpers.MessageCache
+import com.dpad.messaging.helpers.MmsPartCache
 import com.dpad.messaging.helpers.ReactionParser
 import com.dpad.messaging.helpers.MessageSenders
 import com.dpad.messaging.helpers.MmsAttachmentSaver
@@ -138,6 +142,21 @@ class ThreadActivity : BaseActivity() {
     private var messageLoadGeneration = 0L
     private var markThreadReadJob: Job? = null
     private var focusedMessageKey: MessageFocusKey? = null
+    private var messageDataDirty = false
+    private var providerObserverRegistered = false
+    private var providerRefreshPending = false
+    private val providerHandler = Handler(Looper.getMainLooper())
+    private val providerRefreshRunnable = Runnable {
+        providerRefreshPending = false
+        MessageCache.invalidate(threadId)
+        MmsPartCache.clear()
+        loadMessages()
+    }
+    private val providerObserver = object : ContentObserver(providerHandler) {
+        override fun onChange(selfChange: Boolean, uri: Uri?) {
+            scheduleProviderRefresh()
+        }
+    }
 
     private data class MessageFocusKey(
         val id: Long,
@@ -326,6 +345,7 @@ class ThreadActivity : BaseActivity() {
         setIntent(intent)
         extractThreadExtras(intent)
         hasInitializedList = false
+        messageDataDirty = false
         applyPrefillAttachmentFromIntent(intent)
         setupToolbar()
         loadMessages()
@@ -337,9 +357,16 @@ class ThreadActivity : BaseActivity() {
     override fun onResume() {
         super.onResume()
         EventBus.getDefault().register(this)
+        registerProviderObserver()
         applyAccent()
         markThreadRead()
         dumberUi?.open()
+        if (messageDataDirty) {
+            messageDataDirty = false
+            MessageCache.invalidate(threadId)
+            MmsPartCache.clear()
+            loadMessages()
+        }
         // Pick up a change to the reactions setting made while this thread was open.
         if (shownWithConvertReactions != null && shownWithConvertReactions != Prefs.get().convertReactions) {
             loadMessages()
@@ -347,6 +374,8 @@ class ThreadActivity : BaseActivity() {
     }
 
     override fun onPause() {
+        messageDataDirty = true
+        unregisterProviderObserver()
         stopAttachmentReplay()
         if (isRecordingVoiceMessage) {
             stopVoiceRecording(attachResult = false, showFeedback = false)
@@ -359,12 +388,39 @@ class ThreadActivity : BaseActivity() {
 
     override fun onDestroy() {
         historyLoadJob?.cancel()
+        unregisterProviderObserver()
         stopAttachmentReplay()
         runCatching { recorder?.release() }
         recorder = null
         recorderOutputFile = null
         isRecordingVoiceMessage = false
         super.onDestroy()
+    }
+
+    private fun registerProviderObserver() {
+        if (providerObserverRegistered) return
+        runCatching {
+            contentResolver.registerContentObserver(Telephony.Sms.CONTENT_URI, true, providerObserver)
+            contentResolver.registerContentObserver(Uri.parse("content://mms"), true, providerObserver)
+            providerObserverRegistered = true
+        }.onFailure {
+            runCatching { contentResolver.unregisterContentObserver(providerObserver) }
+            providerObserverRegistered = false
+        }
+    }
+
+    private fun unregisterProviderObserver() {
+        providerHandler.removeCallbacks(providerRefreshRunnable)
+        providerRefreshPending = false
+        if (!providerObserverRegistered) return
+        runCatching { contentResolver.unregisterContentObserver(providerObserver) }
+        providerObserverRegistered = false
+    }
+
+    private fun scheduleProviderRefresh() {
+        providerRefreshPending = true
+        providerHandler.removeCallbacks(providerRefreshRunnable)
+        providerHandler.postDelayed(providerRefreshRunnable, PROVIDER_REFRESH_DEBOUNCE_MS)
     }
 
     // ─── Setup ─────────────────────────────────────────────────────────────
@@ -1535,9 +1591,7 @@ class ThreadActivity : BaseActivity() {
             if (loadedMessages.isEmpty()) {
                 loadedMessages = page
             } else {
-                val knownIds = loadedMessages.mapTo(HashSet()) { Triple(it.id, it.isMms, it.isIncoming) }
-                val freshPage = page.filterNot { Triple(it.id, it.isMms, it.isIncoming) in knownIds }
-                loadedMessages = freshPage + loadedMessages
+                loadedMessages = mergeMessagePage(loadedMessages, page)
             }
             hasMoreHistory = hasMoreHistory || page.size >= pageSize
             if (BuildConfig.DEBUG) Log.d("DPAD_MSG", "ThreadActivity.loadMessages() got ${loadedMessages.size} recent messages")
@@ -2554,5 +2608,14 @@ class ThreadActivity : BaseActivity() {
         const val EXTRA_PREFILL_ATTACHMENT_URIS = "extra_prefill_attachment_uris"
         /** Comma-separated participant numbers; present for group threads. */
         const val EXTRA_PARTICIPANTS = "extra_participants"
+        private const val PROVIDER_REFRESH_DEBOUNCE_MS = 300L
+
+        /** Fresh provider rows replace stale cached copies while older pages are retained. */
+        internal fun mergeMessagePage(cached: List<Message>, fresh: List<Message>): List<Message> {
+            val merged = LinkedHashMap<Triple<Long, Boolean, Boolean>, Message>()
+            cached.forEach { merged[Triple(it.id, it.isMms, it.isIncoming)] = it }
+            fresh.forEach { merged[Triple(it.id, it.isMms, it.isIncoming)] = it }
+            return merged.values.sortedWith(compareBy<Message> { it.date }.thenBy { it.id })
+        }
     }
 }
