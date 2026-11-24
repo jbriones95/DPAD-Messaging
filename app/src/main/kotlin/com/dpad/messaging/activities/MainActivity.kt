@@ -34,6 +34,7 @@ import com.dpad.messaging.adapters.ConversationsAdapter
 import com.dpad.messaging.databinding.ActivityMainBinding
 import com.dpad.messaging.events.RefreshConversations
 import com.dpad.messaging.extensions.getConversationsFromTelephony
+import com.dpad.messaging.extensions.getUnreadCountsByThread
 import com.dpad.messaging.helpers.ConversationCache
 import com.dpad.messaging.helpers.ContactColors
 import com.dpad.messaging.helpers.ExternalComposeIntentParser
@@ -49,7 +50,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import org.greenrobot.eventbus.EventBus
 import org.greenrobot.eventbus.Subscribe
 import org.greenrobot.eventbus.ThreadMode
@@ -263,7 +263,8 @@ class MainActivity : BaseActivity() {
             binding.btnNewConversation,
             binding.btnSearch,
             binding.btnOverflow,
-            binding.btnSearchClose
+            binding.btnSearchClose,
+            binding.btnSearchSubmit
         ).forEach { button ->
             button.imageTintList = tint
             button.invalidate()
@@ -272,6 +273,13 @@ class MainActivity : BaseActivity() {
 
     private fun setupSearch() {
         binding.btnSearchClose.setOnClickListener { hideSearch() }
+        binding.btnSearchSubmit.setOnClickListener { submitSearch() }
+        binding.btnSearchSubmit.setOnKeyListener { _, keyCode, event ->
+            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN && event.action == KeyEvent.ACTION_DOWN) {
+                binding.rvConversations.focusFirstItem()
+                true
+            } else false
+        }
         
         // TextWatcher with debounce: waits 500ms after user stops typing before searching
         binding.etSearch.addTextChangedListener(object : android.text.TextWatcher {
@@ -331,8 +339,11 @@ class MainActivity : BaseActivity() {
             }
         }
 
-        val showLoading = (!hasLoadedConversationsOnce && !showedCached) ||
-            (forceRefresh && conversationsAdapter.currentList.isEmpty())
+        // Only a true cold start shows the blocking indicator. Refreshes keep
+        // the cached inbox (including resolved names) visible.
+        val showLoading = !hasLoadedConversationsOnce &&
+            !showedCached &&
+            conversationsAdapter.currentList.isEmpty()
         if (showLoading) {
             conversationLoadError = false
             binding.loadingConversations.visibility = View.VISIBLE
@@ -347,28 +358,27 @@ class MainActivity : BaseActivity() {
             try {
                 val pinnedIds = Prefs.get().getPinnedThreadIds()
                 val mutedIds = Prefs.get().getMutedThreadIds()
-                // Show provider rows immediately; contact enrichment must not block
-                // access to messages on a cold launch.
-                if (conversationsAdapter.currentList.isEmpty()) {
-                    val preview = withContext(Dispatchers.IO) {
-                        getConversationsFromTelephony(
-                            App.get().contactHelper, pinnedIds,
-                            mutedThreadIds = mutedIds, enrichContacts = false
-                        ) + DumberGroupStore(this@MainActivity).use { it.conversations() }
-                    }
-                    if (!isActive) return@launch
-                    displayConversations(preview)
-                    binding.loadingConversations.visibility = View.GONE
-                    binding.rvConversations.visibility = View.VISIBLE
+                val groups = withContext(Dispatchers.IO) {
+                    DumberGroupStore(this@MainActivity).use { it.conversations() }
                 }
+                // Query provider metadata once, then enrich the same snapshot so
+                // cold loads do not run two full conversation/canonical scans.
+                val baseConversations = withContext(Dispatchers.IO) {
+                    getConversationsFromTelephony(
+                        App.get().contactHelper,
+                        pinnedIds,
+                        mutedThreadIds = mutedIds,
+                        enrichContacts = false
+                    )
+                }
+                if (!isActive) return@launch
+                displayConversations(baseConversations + groups)
+                ConversationCache.put(baseConversations + groups)
+                binding.loadingConversations.visibility = View.GONE
+                binding.rvConversations.visibility = View.VISIBLE
+
                 val conversations = withContext(Dispatchers.IO) {
-                    (withTimeoutOrNull(CONVERSATION_LOAD_TIMEOUT_MS) {
-                        getConversationsFromTelephony(
-                            App.get().contactHelper,
-                            pinnedIds,
-                            mutedThreadIds = mutedIds
-                        )
-                    } ?: throw java.io.IOException("Conversation load timed out")) + DumberGroupStore(this@MainActivity).use { it.conversations() }
+                    baseConversations.enrichContacts(App.get().contactHelper, pinnedIds, mutedIds) + groups
                 }
                 if (!isActive) return@launch
                 hasLoadedConversationsOnce = true
@@ -402,7 +412,30 @@ class MainActivity : BaseActivity() {
         }
     }
 
-    private fun displayConversations(input: List<Conversation>) {
+    private fun List<Conversation>.enrichContacts(
+        contactHelper: com.dpad.messaging.helpers.ContactHelper,
+        pinnedIds: Set<Long>,
+        mutedIds: Set<Long>
+    ): List<Conversation> {
+        val unreadCounts = getUnreadCountsByThread()
+        return map { conversation ->
+            val numbers = conversation.participants.split(",")
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+            val names = numbers.map { contactHelper.getDisplayName(it) }
+            val title = if (numbers.size > 1) names.joinToString(", ") else names.firstOrNull() ?: conversation.phoneNumber
+            conversation.copy(
+                title = title,
+                photoUri = conversation.phoneNumber.takeIf(String::isNotBlank)
+                    ?.let { contactHelper.resolve(it)?.photoUri }.orEmpty(),
+                pinned = conversation.threadId in pinnedIds,
+                muted = conversation.threadId in mutedIds,
+                unreadCount = unreadCounts[conversation.threadId] ?: if (conversation.read) 0 else 1
+            )
+        }
+    }
+
+    private fun displayConversations(input: List<Conversation>, focusResults: Boolean = false) {
         val conversations = input.sortedWith(compareByDescending<Conversation> { it.pinned }.thenByDescending { it.date })
         conversationLoadError = false
         binding.conversationError.visibility = View.GONE
@@ -427,7 +460,7 @@ class MainActivity : BaseActivity() {
             )
             binding.tvEmpty.visibility = if (visibleConversations.isEmpty()) View.VISIBLE else View.GONE
 
-            if (isSearchVisible) {
+            if (isSearchVisible && !focusResults) {
                 binding.etSearch.requestFocus()
                 return@submitList
             }
@@ -461,6 +494,28 @@ class MainActivity : BaseActivity() {
                 }
             }
             pendingFocusThreadId = null
+        }
+    }
+
+    private fun submitSearch() {
+        val query = binding.etSearch.text?.toString().orEmpty().trim()
+        currentSearchQuery = query
+        searchDebounceJob?.cancel()
+        if (query.length < 2) {
+            displayConversations(ConversationCache.get().orEmpty())
+            return
+        }
+        lifecycleScope.launch {
+            val pinnedIds = Prefs.get().getPinnedThreadIds()
+            val mutedIds = Prefs.get().getMutedThreadIds()
+            val all = ConversationCache.get() ?: withContext(Dispatchers.IO) {
+                getConversationsFromTelephony(
+                    App.get().contactHelper,
+                    pinnedIds,
+                    mutedThreadIds = mutedIds
+                )
+            }.also { ConversationCache.put(it) }
+            displayConversations(all, focusResults = true)
         }
     }
 
@@ -1032,7 +1087,6 @@ class MainActivity : BaseActivity() {
     companion object {
         private const val REQUEST_PERMISSIONS = 1001
         private const val REQUEST_DEFAULT_SMS = 1002
-        private const val CONVERSATION_LOAD_TIMEOUT_MS = 20_000L
         private const val REFRESH_DEBOUNCE_MS = 800L
     }
 }

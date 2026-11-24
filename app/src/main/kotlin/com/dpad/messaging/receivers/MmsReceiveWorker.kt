@@ -6,6 +6,7 @@ import androidx.core.net.toUri
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
@@ -157,6 +158,7 @@ class MmsReceiveWorker(
 
         fun enqueue(context: Context, messageId: Long) {
             val request = OneTimeWorkRequestBuilder<MmsReceiveWorker>()
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                 .setInputData(workDataOf(KEY_MESSAGE_ID to messageId))
                 .build()
             WorkManager.getInstance(context).enqueueUniqueWork(
@@ -167,7 +169,9 @@ class MmsReceiveWorker(
         }
 
         fun enqueueFallback(context: Context) {
-            val request = OneTimeWorkRequestBuilder<MmsReceiveWorker>().build()
+            val request = OneTimeWorkRequestBuilder<MmsReceiveWorker>()
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                .build()
             WorkManager.getInstance(context).enqueueUniqueWork(
                 "mms-receive-fallback",
                 ExistingWorkPolicy.KEEP,

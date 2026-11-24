@@ -35,7 +35,7 @@ class MessageBodyTextView @JvmOverloads constructor(
         overScrollMode = OVER_SCROLL_IF_CONTENT_SCROLLS
         linksClickable = true
         movementMethod = LinkMovementMethod.getInstance()
-        highlightColor = context.getColor(R.color.focus_highlight)
+        highlightColor = context.getColor(R.color.bubbleTextHighlight)
     }
 
     override fun setText(text: CharSequence?, type: BufferType?) {

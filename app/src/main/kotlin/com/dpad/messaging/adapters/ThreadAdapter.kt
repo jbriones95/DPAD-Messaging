@@ -46,6 +46,8 @@ class ThreadAdapter(
 ) : ListAdapter<ThreadItem, RecyclerView.ViewHolder>(DIFF_CALLBACK) {
 
     private var audioPlayer: MediaPlayer? = null
+    private var messageOrdinals = IntArray(0)
+    private var totalMessageCount = 0
     private var playingAttachmentUri: String? = null
     private var playingLabel: TextView? = null
     private val audioHandler = Handler(Looper.getMainLooper())
@@ -59,6 +61,20 @@ class ThreadAdapter(
     }
 
     companion object {
+        /** Picks the text polarity with the strongest contrast against a focus surface. */
+        fun higherContrastText(background: Int, preferred: Int): Int {
+            val black = 0xFF000000.toInt()
+            val white = 0xFFFFFFFF.toInt()
+            val preferredContrast = androidx.core.graphics.ColorUtils.calculateContrast(preferred, background)
+            val blackContrast = androidx.core.graphics.ColorUtils.calculateContrast(black, background)
+            val whiteContrast = androidx.core.graphics.ColorUtils.calculateContrast(white, background)
+            return when {
+                preferredContrast >= blackContrast && preferredContrast >= whiteContrast -> preferred
+                blackContrast >= whiteContrast -> black
+                else -> white
+            }
+        }
+
         /** "👍 from Alice" – used for accessibility and the reactions list. */
         fun reactionLabel(context: Context, reaction: MessageReaction): String = context.getString(
             R.string.reaction_from,
@@ -150,6 +166,20 @@ class ThreadAdapter(
         }
     }
 
+    override fun onCurrentListChanged(
+        previousList: List<ThreadItem>,
+        currentList: List<ThreadItem>
+    ) {
+        super.onCurrentListChanged(previousList, currentList)
+        totalMessageCount = currentList.count { it !is ThreadItem.DateHeader }
+        messageOrdinals = IntArray(currentList.size)
+        var ordinal = 0
+        currentList.forEachIndexed { index, item ->
+            if (item !is ThreadItem.DateHeader) ordinal++
+            messageOrdinals[index] = ordinal
+        }
+    }
+
     override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
         super.onViewRecycled(holder)
         val rv = holder.itemView.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.rv_attachments)
@@ -205,9 +235,10 @@ class ThreadAdapter(
                 restingColors = listOf(
                     R.color.bubbleSentText,
                     R.color.messageMetaOnSent,
-                    R.color.statusDelivered,
+                    R.color.messageMetaOnSent,
                     R.color.messageMetaOnSent
                 ),
+                bodyTextViews = listOf(binding.tvBody),
                 reactions = item.reactions,
                 positionProvider = { bindingAdapterPosition }
             )
@@ -255,6 +286,7 @@ class ThreadAdapter(
                 message = message,
                 textViews = listOf(binding.tvBody, binding.tvTime, binding.tvSenderName, binding.tvEncrypted),
                 restingColors = null,
+                bodyTextViews = listOf(binding.tvBody),
                 reactions = item.reactions,
                 positionProvider = { bindingAdapterPosition }
             )
@@ -332,6 +364,7 @@ class ThreadAdapter(
                 message = message,
                 textViews = listOf(binding.tvBody, binding.tvState),
                 restingColors = listOf(R.color.bubbleSentText, R.color.messageMetaOnSent),
+                bodyTextViews = listOf(binding.tvBody),
                 positionProvider = { bindingAdapterPosition }
             )
 
@@ -428,6 +461,7 @@ class ThreadAdapter(
         message: Message,
         textViews: List<TextView>,
         restingColors: List<Int>?,
+        bodyTextViews: List<TextView>,
         reactions: List<MessageReaction> = emptyList(),
         positionProvider: () -> Int
     ) {
@@ -436,9 +470,18 @@ class ThreadAdapter(
         val colors = restingColors?.map { bubble.context.getColor(it) }
             ?: textViews.map { it.currentTextColor }
         val focusedColor = bubble.context.getColor(R.color.focus_content)
+        val focusFill = bubble.context.getColor(R.color.focus_fill)
+        val focusedBodyText = higherContrastText(focusFill, focusedColor)
+        val bodyViews = bodyTextViews.toSet()
         fun updateTextColors(focused: Boolean) {
             textViews.zip(colors).forEach { (textView, restingColor) ->
-                textView.setTextColor(if (focused) focusedColor else restingColor)
+                textView.setTextColor(
+                    when {
+                        !focused -> restingColor
+                        textView !in bodyViews -> focusedColor
+                        else -> focusedBodyText
+                    }
+                )
             }
         }
         updateTextColors(bubble.hasFocus())
@@ -447,11 +490,8 @@ class ThreadAdapter(
             if (!hasFocus) return@setOnFocusChangeListener
             val position = positionProvider()
             if (position == RecyclerView.NO_POSITION) return@setOnFocusChangeListener
-            val messageCount = currentList.count { it !is ThreadItem.DateHeader }
-            val messageNumber = currentList
-                .take(position + 1)
-                .count { it !is ThreadItem.DateHeader }
-            onMessageFocused(message, messageNumber, messageCount)
+            val messageNumber = messageOrdinals.getOrNull(position) ?: return@setOnFocusChangeListener
+            onMessageFocused(message, messageNumber, totalMessageCount)
         }
     }
 
@@ -706,6 +746,7 @@ class ThreadAdapter(
                 message = message,
                 textViews = listOf(binding.tvBody),
                 restingColors = listOf(R.color.bubbleSentText),
+                bodyTextViews = listOf(binding.tvBody),
                 positionProvider = { bindingAdapterPosition }
             )
             binding.bubbleContainer.setOnLongClickListener {

@@ -283,7 +283,7 @@ public class PushReceiver extends BroadcastReceiver {
             }
 
             MmsConfig.init(context);
-            new ReceivePushTask(context, null).executeOnExecutor(PUSH_RECEIVER_EXECUTOR, intent);
+            new ReceivePushTask(context, goAsync()).executeOnExecutor(PUSH_RECEIVER_EXECUTOR, intent);
 
             Log.v("mms_receiver", context.getPackageName() + " received and aborted");
         }

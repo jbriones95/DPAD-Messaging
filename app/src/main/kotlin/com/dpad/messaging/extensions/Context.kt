@@ -5,12 +5,14 @@ import android.content.ContentUris
 import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.provider.Telephony
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import androidx.core.content.ContextCompat
 import com.dpad.messaging.App
 import com.dpad.messaging.helpers.ContactHelper
+import com.dpad.messaging.helpers.ConversationCache
 import com.dpad.messaging.helpers.MmsHelper
 import com.dpad.messaging.helpers.Prefs
 import com.dpad.messaging.models.Conversation
@@ -259,11 +261,13 @@ private fun Context.resolveRecipientIds(
 suspend fun Context.getMessagesForThread(
     threadId: Long,
     contactHelper: ContactHelper,
-    limit: Int = Int.MAX_VALUE
+    limit: Int = Int.MAX_VALUE,
+    offset: Int = 0
 ): List<Message> {
     if (threadId <= 0L || threadId == Long.MAX_VALUE) return emptyList()
 
     val cappedLimit = if (limit <= 0) Int.MAX_VALUE else limit
+    val cappedOffset = offset.coerceAtLeast(0)
     val messages = mutableListOf<Message>()
     val recycledEntries = runCatching {
         App.get().database.messagesDao().getRecycleBinMessages()
@@ -299,13 +303,19 @@ suspend fun Context.getMessagesForThread(
     )
 
     try {
+        val extras = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || cappedLimit == Int.MAX_VALUE) null
+            else android.os.Bundle().apply {
+                putInt(android.content.ContentResolver.QUERY_ARG_LIMIT, cappedLimit + cappedOffset)
+                putInt(android.content.ContentResolver.QUERY_ARG_OFFSET, cappedOffset)
+            }
         val smsCursor = try {
             contentResolver.query(
                 smsUri,
                 smsProjection,
                 "${Telephony.Sms.THREAD_ID} = ?",
                 arrayOf(threadId.toString()),
-                "${Telephony.Sms.DATE} DESC"
+                "${Telephony.Sms.DATE} DESC",
+                extras
             )
         } catch (_: Exception) {
             contentResolver.query(
@@ -313,7 +323,8 @@ suspend fun Context.getMessagesForThread(
                 smsFallbackProjection,
                 "${Telephony.Sms.THREAD_ID} = ?",
                 arrayOf(threadId.toString()),
-                "${Telephony.Sms.DATE} DESC"
+                "${Telephony.Sms.DATE} DESC",
+                extras
             )
         }
 
@@ -329,7 +340,9 @@ suspend fun Context.getMessagesForThread(
             val idxSubId = cursor.getColumnIndex(Telephony.Sms.SUBSCRIPTION_ID)
 
             var loadedSms = 0
+            var cursorPosition = 0
             while (cursor.moveToNext() && loadedSms < cappedLimit) {
+                if (cursorPosition++ < cappedOffset) continue
                 if (idxId < 0 || idxType < 0) continue
                 val messageId = cursor.getLong(idxId)
                 if (messageId in recycledSmsIds) continue
@@ -395,7 +408,9 @@ suspend fun Context.getMessagesForThread(
             val idxSub = cursor.getColumnIndex("sub")
 
             var loadedMms = 0
+            var cursorPosition = 0
             while (cursor.moveToNext() && loadedMms < cappedLimit) {
+                if (cursorPosition++ < cappedOffset) continue
                 if (idxId < 0 || idxDate < 0 || idxMsgBox < 0) continue
 
                 val id      = cursor.getLong(idxId)

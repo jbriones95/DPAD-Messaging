@@ -21,6 +21,16 @@ object ConversationCache {
         cached = conversations
     }
 
+    /** Keep resolved contact names while updating only the opened thread. */
+    @Synchronized
+    fun markThreadRead(threadId: Long) {
+        cached = cached?.map { conversation ->
+            if (conversation.threadId == threadId) {
+                conversation.copy(read = true, unreadCount = 0)
+            } else conversation
+        }
+    }
+
     @Synchronized
     fun invalidate() {
         cached = null

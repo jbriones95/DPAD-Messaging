@@ -106,12 +106,14 @@ public abstract class MmsReceivedReceiver extends BroadcastReceiver {
         final String transactionId = intent.getStringExtra(EXTRA_TRANSACTION_ID);
         Log.v(TAG, path);
 
+        final PendingResult pendingResult = goAsync();
         new Thread(() -> {
-            FileInputStream reader = null;
-            Uri messageUri = null;
-            String errorMessage = null;
-
             try {
+                FileInputStream reader = null;
+                Uri messageUri = null;
+                String errorMessage = null;
+
+                try {
                 File mDownloadFile = new File(path);
                 final int nBytes = (int) mDownloadFile.length();
                 reader = new FileInputStream(mDownloadFile);
@@ -153,26 +155,30 @@ public abstract class MmsReceivedReceiver extends BroadcastReceiver {
             } catch (IOException e) {
                 errorMessage = "MMS received, io exception";
                 Log.e(TAG, errorMessage, e);
+            } catch (RuntimeException e) {
+                errorMessage = "MMS received, runtime exception";
+                Log.e(TAG, errorMessage, e);
             } finally {
-                if (reader != null) {
-                    try {
-                        reader.close();
-                    } catch (IOException e) {
-                        errorMessage = "MMS received, io exception";
-                        Log.e(TAG, "MMS received, io exception", e);
+                try {
+                    if (reader != null) {
+                        try {
+                            reader.close();
+                        } catch (IOException e) {
+                            Log.e(TAG, "MMS received, io exception", e);
+                        }
                     }
+                    handleHttpError(context, intent);
+                    DownloadManager.finishDownload(intent.getStringExtra(EXTRA_LOCATION_URL));
+
+                    if (messageUri != null) {
+                        onMessageReceived(context, messageUri);
+                    }
+                    if (errorMessage != null) {
+                        onError(context, errorMessage);
+                    }
+                } finally {
+                    pendingResult.finish();
                 }
-            }
-
-            handleHttpError(context, intent);
-            DownloadManager.finishDownload(intent.getStringExtra(EXTRA_LOCATION_URL));
-
-            if (messageUri != null) {
-                onMessageReceived(context, messageUri);
-            }
-
-            if (errorMessage != null) {
-                onError(context, errorMessage);
             }
         }).start();
     }
@@ -187,7 +193,7 @@ public abstract class MmsReceivedReceiver extends BroadcastReceiver {
         if (!(pdu instanceof RetrieveConf)) {
             return null;
         }
-        return pdu.getFrom().getString();
+        return pdu.getFrom() == null ? null : pdu.getFrom().getString();
     }
 
     private void updateNotificationIndRetrieveStatus(Context context, String locationUrl, int retrieveStatus) {

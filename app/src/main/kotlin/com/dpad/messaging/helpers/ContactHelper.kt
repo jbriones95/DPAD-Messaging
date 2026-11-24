@@ -23,8 +23,8 @@ class ContactHelper(private val context: Context) {
         val succeeded: Boolean
     )
 
-    private val cache = LruCache<String, ContactInfo>(256)
-    private val misses = LruCache<String, Boolean>(256)
+    private val cache = LruCache<String, ContactInfo>(1024)
+    private val misses = LruCache<String, Boolean>(1024)
 
     /** Returns the best display name for a phone number, or the number itself if no contact found. */
     fun getDisplayName(phoneNumber: String): String {

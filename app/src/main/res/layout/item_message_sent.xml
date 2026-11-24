@@ -75,7 +75,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginStart="@dimen/padding_tiny"
                 android:focusable="false"
-                android:textColor="@color/statusDelivered"
+                android:textColor="@color/messageMetaOnSent"
                  android:textSize="@dimen/text_size_meta"
                 android:visibility="gone" />
 

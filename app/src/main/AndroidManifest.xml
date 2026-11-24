@@ -308,11 +308,15 @@
             android:name=".receivers.MmsSentReceiver"
             android:exported="false" />
 
-        <!-- Klinker DownloadManager callback target (routed via taskAffinity). -->
+        <!-- Manifest target for platform MMS download completion. Android can
+             restart the app after process death, unlike a dynamic receiver. -->
         <receiver
             android:name=".receivers.LibraryMmsReceivedReceiver"
-            android:exported="false"
-            android:taskAffinity="com.klinker.android.messaging.MMS_RECEIVED" />
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.dpad.messaging.action.MMS_DOWNLOADED" />
+            </intent-filter>
+        </receiver>
 
         <!-- In-mmslib download-complete broadcast target (routed via taskAffinity
              by BroadcastUtils; fires after DownloadRequest.persist stores the

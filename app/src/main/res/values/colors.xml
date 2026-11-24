@@ -60,6 +60,7 @@
     <color name="bubbleSentText">#FFFFFF</color>
     <color name="bubbleReceivedBg">#E8F0FA</color>
     <color name="bubbleReceivedText">#18324D</color>
+    <color name="bubbleTextHighlight">#B9CBE1</color>
 
     <!-- ─── Conversation List ─── -->
     <color name="conversationTitle">@color/text_primary</color>
@@ -90,7 +91,7 @@
     <!-- ─── Controls / Meta text ─── -->
     <color name="switchThumbOff">#AAAAAA</color>
     <color name="switchTrackOff">#666666</color>
-    <color name="messageMetaOnSent">#E6FFFFFF</color>
+    <color name="messageMetaOnSent">#F2F6FD</color>
     <color name="messageMetaOnReceived">@color/text_tertiary</color>
     <color name="imageViewerBg">#000000</color>
 

@@ -134,10 +134,20 @@
         android:visibility="gone">
 
         <ImageButton
+            android:id="@+id/btn_search_submit"
+            style="@style/ToolbarButton"
+            android:contentDescription="@string/search"
+            android:src="@drawable/ic_search"
+            android:nextFocusLeft="@id/et_search"
+            android:nextFocusRight="@id/et_search"
+            android:nextFocusDown="@id/rv_conversations" />
+
+        <ImageButton
             android:id="@+id/btn_search_close"
             style="@style/ToolbarButton"
             android:contentDescription="@string/back"
             android:src="@drawable/ic_back"
+            android:nextFocusLeft="@id/et_search"
             android:nextFocusRight="@id/et_search" />
 
         <EditText
@@ -159,6 +169,7 @@
             android:textColorHint="@color/composeHint"
             android:textSize="@dimen/text_size_normal"
             android:nextFocusLeft="@id/btn_search_close"
+            android:nextFocusRight="@id/btn_search_submit"
             android:nextFocusDown="@id/rv_conversations" />
 
     </LinearLayout>

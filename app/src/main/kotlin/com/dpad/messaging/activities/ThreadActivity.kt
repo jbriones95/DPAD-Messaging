@@ -36,6 +36,7 @@ import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.dpad.messaging.App
 import com.dpad.messaging.BuildConfig
@@ -135,6 +136,7 @@ class ThreadActivity : BaseActivity() {
     private var loadMessagesJob: Job? = null
     private var displayMessagesJob: Job? = null
     private var messageLoadGeneration = 0L
+    private var markThreadReadJob: Job? = null
     private var focusedMessageKey: MessageFocusKey? = null
 
     private data class MessageFocusKey(
@@ -356,6 +358,7 @@ class ThreadActivity : BaseActivity() {
     }
 
     override fun onDestroy() {
+        historyLoadJob?.cancel()
         stopAttachmentReplay()
         runCatching { recorder?.release() }
         recorder = null
@@ -474,6 +477,12 @@ class ThreadActivity : BaseActivity() {
             consumeUpAtTop = true
             onLeftNavigation = { binding.btnBack.requestFocus() }
             onRightNavigation = { binding.btnDetails.requestFocus() }
+            addOnScrollListener(object : RecyclerView.OnScrollListener() {
+                override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                    val lm = recyclerView.layoutManager as? LinearLayoutManager ?: return
+                    if (lm.findFirstVisibleItemPosition() <= 3) loadOlderMessages()
+                }
+            })
             // D-Pad DOWN from last message → compose bar
             onBottomEdgeReached = {
                 binding.etMessage.requestFocus()
@@ -1484,29 +1493,89 @@ class ThreadActivity : BaseActivity() {
 
     /** Reactions setting the list was last built with; null before the first load. */
     private var shownWithConvertReactions: Boolean? = null
+    private val initialMessagePageSize = 100
+    private val historyPageSize = 100
+    private var hasMoreHistory = false
+    private var historyLoadJob: Job? = null
+    private var historyLoading = false
 
     private fun loadMessages() {
         if (BuildConfig.DEBUG) Log.d("DPAD_MSG", "ThreadActivity.loadMessages() called for threadId=$threadId")
 
         val generation = ++messageLoadGeneration
+        historyLoadJob?.cancel()
+        historyLoading = false
+        hasMoreHistory = false
+        val pageSize = initialMessagePageSize
+        var loadedMessages: List<Message> = emptyList()
 
-        // Show cached data immediately for instant warm loads
+        // Show cached data immediately for instant warm loads.
         val cached = MessageCache.get(threadId)
         if (cached != null) {
+            loadedMessages = cached.takeLast(pageSize)
+            hasMoreHistory = cached.size > pageSize
             if (BuildConfig.DEBUG) Log.d("DPAD_MSG", "ThreadActivity.loadMessages() cache hit: ${cached.size} messages")
-            displayMessages(cached, fromCache = true, generation = generation)
+            displayMessages(loadedMessages, fromCache = true, generation = generation)
         }
 
-        // Always refresh from the real source of truth (Telephony ContentProvider)
+        // Load only recent history first. MMS parts and contact names for old
+        // messages must not delay opening a long conversation.
         loadMessagesJob?.cancel()
         loadMessagesJob = lifecycleScope.launch {
-            val messages = withContext(Dispatchers.IO) {
-                getMessagesForThread(threadId, App.get().contactHelper)
+            val page = withContext(Dispatchers.IO) {
+                getMessagesForThread(
+                    threadId,
+                    App.get().contactHelper,
+                    limit = pageSize,
+                    offset = if (loadedMessages.isEmpty()) 0 else loadedMessages.size - pageSize
+                )
             }
             if (generation != messageLoadGeneration) return@launch
-            if (BuildConfig.DEBUG) Log.d("DPAD_MSG", "ThreadActivity.loadMessages() got ${messages.size} messages for threadId=$threadId")
-            MessageCache.put(threadId, messages)
-            displayMessages(messages, fromCache = false, generation = generation)
+            hasMoreHistory = page.size >= pageSize
+            if (loadedMessages.isEmpty()) {
+                loadedMessages = page
+            } else {
+                val knownIds = loadedMessages.mapTo(HashSet()) { Triple(it.id, it.isMms, it.isIncoming) }
+                val freshPage = page.filterNot { Triple(it.id, it.isMms, it.isIncoming) in knownIds }
+                loadedMessages = freshPage + loadedMessages
+            }
+            hasMoreHistory = hasMoreHistory || page.size >= pageSize
+            if (BuildConfig.DEBUG) Log.d("DPAD_MSG", "ThreadActivity.loadMessages() got ${loadedMessages.size} recent messages")
+            MessageCache.put(threadId, loadedMessages)
+            displayMessages(loadedMessages, fromCache = false, generation = generation)
+        }
+    }
+
+    /** Loads the next older page when the user reaches the top of the thread. */
+    private fun loadOlderMessages() {
+        if (historyLoading || !hasMoreHistory || loadMessagesJob?.isActive == true) return
+        historyLoading = true
+        val generation = messageLoadGeneration
+        val offset = MessageCache.get(threadId).orEmpty().size
+        historyLoadJob = lifecycleScope.launch {
+            val page = withContext(Dispatchers.IO) {
+                getMessagesForThread(
+                    threadId,
+                    App.get().contactHelper,
+                    limit = historyPageSize,
+                    offset = offset
+                )
+            }
+            if (generation != messageLoadGeneration) return@launch
+            historyLoading = false
+            hasMoreHistory = page.size >= historyPageSize
+            if (page.isNotEmpty()) {
+                val current = MessageCache.get(threadId).orEmpty()
+                val merged = (page + current)
+                    .distinctBy { Triple(it.id, it.isMms, it.isIncoming) }
+                    .sortedWith(compareBy<Message> { it.date }.thenBy { it.id })
+                MessageCache.put(threadId, merged)
+                displayMessages(merged, fromCache = true, generation = generation)
+            }
+        }.also { job ->
+            job.invokeOnCompletion {
+                if (generation == messageLoadGeneration) historyLoading = false
+            }
         }
     }
 
@@ -1611,12 +1680,12 @@ class ThreadActivity : BaseActivity() {
     }
 
     private fun markThreadRead() {
-        if (threadId <= 0L) return
+        if (threadId <= 0L || markThreadReadJob?.isActive == true) return
 
-        // The main screen can resume before provider updates complete. Force it
-        // to reload instead of immediately showing a stale unread count from cache.
-        ConversationCache.invalidate()
-        lifecycleScope.launch(Dispatchers.IO) {
+        // Preserve resolved contact names in the inbox cache. Provider observers
+        // still refresh snippets and ordering when messages change.
+        ConversationCache.markThreadRead(threadId)
+        markThreadReadJob = lifecycleScope.launch(Dispatchers.IO) {
             App.get().database.messagesDao().markThreadRead(threadId)
             App.get().database.conversationsDao().markAsRead(threadId)
             markThreadAsReadInTelephony(threadId)

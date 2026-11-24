@@ -30,9 +30,9 @@
     <color name="text_secondary">#C6BBA8</color>
     <color name="text_tertiary">#B5AA98</color>
     <color name="divider_subtle">#403A30</color>
-    <color name="focus_fill">#8A6418</color>
+    <color name="focus_fill">#241C10</color>
     <color name="focus_outline">#FFD166</color>
-    <color name="focus_content">#151006</color>
+    <color name="focus_content">#FFF4D8</color>
     <color name="status_success">#70C99D</color>
     <color name="status_error">#F08A82</color>
     <color name="surface_compose">@color/surface_base</color>
@@ -55,6 +55,7 @@
     <color name="bubbleSentText">#FFFFFF</color>
     <color name="bubbleReceivedBg">#302B23</color>
     <color name="bubbleReceivedText">#F7F0E3</color>
+    <color name="bubbleTextHighlight">#FFF4D8</color>
 
     <!-- ─── Conversation List ─── -->
     <color name="conversationTitle">@color/text_primary</color>
@@ -85,7 +86,7 @@
     <!-- ─── Controls / Meta text ─── -->
     <color name="switchThumbOff">#AAAAAA</color>
     <color name="switchTrackOff">#666666</color>
-    <color name="messageMetaOnSent">#E6FFFFFF</color>
+    <color name="messageMetaOnSent">#F2F6FD</color>
     <color name="messageMetaOnReceived">@color/text_tertiary</color>
     <color name="imageViewerBg">#000000</color>
 

@@ -2,28 +2,23 @@
 package com.android.mms.transaction;
 
 import android.app.PendingIntent;
-import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.PowerManager;
 import android.telephony.SmsManager;
 import android.text.TextUtils;
 
 import com.android.mms.MmsConfig;
 import com.klinker.android.logger.Log;
-import com.klinker.android.send_message.BroadcastUtils;
 import com.klinker.android.send_message.MmsReceivedReceiver;
 import com.klinker.android.send_message.MmsRequestOverrides;
 import com.klinker.android.send_message.SmsManagerFactory;
 
 import java.io.File;
 import java.util.Random;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -33,7 +28,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class DownloadManager {
     private static final String TAG = "DownloadManager";
     private static DownloadManager ourInstance = new DownloadManager();
-    private static final ConcurrentHashMap<String, MmsDownloadReceiver> mMap = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Object> mMap = new ConcurrentHashMap<>();
 
     public static DownloadManager getInstance() {
         return ourInstance;
@@ -43,22 +38,16 @@ public class DownloadManager {
 
     }
 
+    public static final String ACTION_MMS_DOWNLOADED = "com.dpad.messaging.action.MMS_DOWNLOADED";
+
     public void downloadMultimediaMessage(final Context context, final String location, final String transactionId, Uri uri, boolean byPush, int subscriptionId) {
         if (location == null || mMap.get(location) != null) {
             return;
         }
 
-        MmsDownloadReceiver receiver = new MmsDownloadReceiver();
-        mMap.put(location, receiver);
-
-        // Use unique action in order to avoid cancellation of notifying download result.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            context.getApplicationContext().registerReceiver(
-                    receiver, new IntentFilter(receiver.mAction), Context.RECEIVER_EXPORTED
-            );
-        } else {
-            context.getApplicationContext().registerReceiver(receiver, new IntentFilter(receiver.mAction));
-        }
+        // Keep only duplicate-tracking state in memory. The completion callback
+        // targets a manifest receiver so process death cannot lose it.
+        mMap.put(location, null);
 
         Log.v(TAG, "receiving with system method");
         final String fileName = "download." + Math.abs(new Random().nextLong()) + ".dat";
@@ -69,7 +58,9 @@ public class DownloadManager {
                 .scheme(ContentResolver.SCHEME_CONTENT)
                 .build();
 
-        Intent download = new Intent(receiver.mAction);
+        Intent download = new Intent(ACTION_MMS_DOWNLOADED)
+                .setPackage(context.getPackageName())
+                .setClass(context, com.klinker.android.send_message.MmsReceivedReceiver.class);
         download.putExtra(MmsReceivedReceiver.EXTRA_FILE_PATH, mDownloadFile.getPath());
         download.putExtra(MmsReceivedReceiver.EXTRA_LOCATION_URL, location);
         download.putExtra(MmsReceivedReceiver.EXTRA_TRANSACTION_ID, transactionId);
@@ -81,7 +72,7 @@ public class DownloadManager {
             flags = flags | PendingIntent.FLAG_IMMUTABLE;
         }
         final PendingIntent pendingIntent = PendingIntent.getBroadcast(
-                context, 0, download, flags);
+                context, location.hashCode(), download, flags);
 
         final SmsManager smsManager = SmsManagerFactory.createSmsManager(subscriptionId);
 
@@ -103,28 +94,6 @@ public class DownloadManager {
         context.grantUriPermission(context.getPackageName() + ".MmsFileProvider",
                 contentUri,
                 Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-    }
-
-    private static class MmsDownloadReceiver extends BroadcastReceiver {
-        private static final String ACTION_PREFIX = "com.android.mms.transaction.DownloadManager$MmsDownloadReceiver.";
-        private final String mAction;
-
-        MmsDownloadReceiver() {
-            mAction = ACTION_PREFIX + UUID.randomUUID().toString();
-        }
-
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            context.unregisterReceiver(this);
-
-            PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
-            PowerManager.WakeLock wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "smsmms:download-mms-lock");
-            wakeLock.acquire(60 * 1000);
-
-            Intent newIntent = (Intent) intent.clone();
-            newIntent.setAction(MmsReceivedReceiver.MMS_RECEIVED);
-            BroadcastUtils.sendExplicitBroadcast(context, newIntent, MmsReceivedReceiver.MMS_RECEIVED);
-        }
     }
 
     public static void finishDownload(String location) {
