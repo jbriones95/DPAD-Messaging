@@ -4,10 +4,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.telephony.SmsMessage
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
+import android.util.Log
+import androidx.core.content.ContextCompat
 
 /**
  * Receives SMS_DELIVER synchronously and hands the parsed PDU to durable work.
@@ -41,18 +39,20 @@ class SmsReceiver : BroadcastReceiver() {
             ?: android.telephony.SubscriptionManager.getDefaultSmsSubscriptionId()
 
         val pendingResult = goAsync()
-        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-            try {
-                SmsReceiveWorker.enqueue(
-                    context,
-                    address,
-                    body,
-                    timestamp,
-                    subscriptionId
-                ).result.await()
-            } finally {
-                pendingResult.finish()
-            }
+        try {
+            SmsReceiveWorker.enqueue(
+                context,
+                address,
+                body,
+                timestamp,
+                subscriptionId
+            ).result.addListener(
+                { pendingResult.finish() },
+                ContextCompat.getMainExecutor(context)
+            )
+        } catch (error: Exception) {
+            Log.e("DPAD_MSG", "Unable to enqueue incoming SMS", error)
+            pendingResult.finish()
         }
     }
 }
