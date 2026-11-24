@@ -3,14 +3,9 @@ name: Android CI
 on:
   push:
     branches: [ "**" ]
-    tags: [ "v*" ]
   pull_request:
   workflow_dispatch:
     inputs:
-      release_tag:
-        description: "Existing v* tag to build and publish"
-        required: false
-        type: string
       experimental_build:
         description: "Publish an experimental build from the selected branch"
         required: false
@@ -20,12 +15,53 @@ on:
 permissions:
   contents: read
 
-jobs:
-  pr-quality-gates:
-    runs-on: ubuntu-latest
-    env:
-      DUMBER_RUST_TOOLCHAIN: "1.96.0"
+concurrency:
+  group: android-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
+env:
+  DUMBER_RUST_TOOLCHAIN: "1.96.0"
+  DUMBER_RUST_TARGETS: "aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android"
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      android: ${{ steps.filter.outputs.android }}
+      native: ${{ steps.filter.outputs.native }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            android:
+              - 'app/**'
+              - 'vendor/mmslib/**'
+              - 'vendor/dumber-chat-core/**'
+              - 'gradle/**'
+              - 'gradlew'
+              - 'gradlew.bat'
+              - 'settings.gradle.kts'
+              - 'build.gradle.kts'
+              - 'gradle.properties'
+              - 'scripts/build-dumber-core.sh'
+              - 'scripts/dumber-native-key.sh'
+              - 'scripts/check-translations.py'
+              - '.github/workflows/android-ci.yml'
+              - '.github/workflows/android-release.yml'
+            native:
+              - 'vendor/dumber-chat-core/**'
+              - 'scripts/build-dumber-core.sh'
+              - 'scripts/dumber-native-key.sh'
+              - 'app/build.gradle.kts'
+
+  pr-quality-gates:
+    needs: changes
+    if: needs.changes.outputs.android == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      native_key: ${{ steps.native-key.outputs.key }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,6 +72,26 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Compute native artifact key
+        id: native-key
+        run: echo "key=$(bash scripts/dumber-native-key.sh)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore prebuilt native core
+        id: native-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: app/src/main/jniLibs
+          key: dumber-native-${{ runner.os }}-${{ steps.native-key.outputs.key }}
+
+      - name: Configure prebuilt native core
+        run: |
+          if [[ "${{ steps.native-cache.outputs.cache-hit }}" == "true" ]]; then
+            echo "DUMBER_CORE_PREBUILT=true" >> "$GITHUB_ENV"
+          fi
+
       - name: Set up Rust for Android
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -43,13 +99,21 @@ jobs:
           targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
           components: rustfmt, clippy
 
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: vendor/dumber-chat-core -> target
+
       - name: Test dumber.chat native core
+        if: needs.changes.outputs.native == 'true' || github.event_name == 'workflow_dispatch'
         run: rustup run "$DUMBER_RUST_TOOLCHAIN" cargo test --locked --manifest-path vendor/dumber-chat-core/Cargo.toml
 
       - name: Check dumber.chat native formatting
+        if: needs.changes.outputs.native == 'true' || github.event_name == 'workflow_dispatch'
         run: rustup run "$DUMBER_RUST_TOOLCHAIN" cargo fmt --all --manifest-path vendor/dumber-chat-core/Cargo.toml -- --check
 
       - name: Lint dumber.chat native core
+        if: needs.changes.outputs.native == 'true' || github.event_name == 'workflow_dispatch'
         run: rustup run "$DUMBER_RUST_TOOLCHAIN" cargo clippy --locked --manifest-path vendor/dumber-chat-core/Cargo.toml --all-targets -- -D warnings
 
       - name: Setup Android SDK
@@ -64,108 +128,56 @@ jobs:
         run: python3 scripts/check-translations.py
 
       - name: Build debug
-        run: ./gradlew assembleDebug
-
-      - name: Lint (baseline enforced)
-        run: ./gradlew lintDebug
-
-      - name: Unit smoke tests (SMS/MMS/scheduled)
-        run: ./gradlew testDebugUnitTest
-
-      - name: Verify Room migrations (schema + migration test compile)
-        run: ./gradlew :app:assembleDebugAndroidTest
-
-  trusted-signed-release-gate:
-    runs-on: ubuntu-latest
-    needs: pr-quality-gates
-    if: >-
-      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
-      (github.event_name == 'workflow_dispatch' && startsWith(inputs.release_tag, 'v'))
-    permissions:
-      contents: write
-    env:
-      DUMBER_RUST_TOOLCHAIN: "1.96.0"
-      RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
-      RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
-      RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Set up Rust for Android
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.96.0
-          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v4
-        with:
-          packages: 'platform-tools ndk;30.0.16248370'
-
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
-
-      - name: Decode release keystore
-        run: echo "${{ secrets.RELEASE_STORE_FILE }}" | base64 --decode > "$RUNNER_TEMP/release.jks"
-        shell: bash
-
-      - name: Build release (signed gate)
-        run: ./gradlew assembleRelease
-        env:
-          RELEASE_STORE_FILE: "${{ runner.temp }}/release.jks"
-
-      - name: Verify trusted signing certificate
         run: |
-          expected="C7EEB6B0A8089EAD8FF786AF45FFC545F4C4F7BE38DD62655E42843EEC91ED6E"
-          apk="app/build/outputs/apk/release/app-release.apk"
-          actual="$(keytool -printcert -jarfile "$apk" | awk -F'SHA256: ' '/SHA256:/{print $2; exit}' | tr -d ':' | tr '[:lower:]' '[:upper:]')"
-          if [[ "$actual" != "$expected" ]]; then
-            echo "Unexpected signing certificate on $apk: $actual"
-            exit 1
+          args=()
+          if [[ "$DUMBER_CORE_PREBUILT" == "true" ]]; then
+            args+=("-PdumberCorePrebuilt=true")
           fi
-          echo "Verified trusted signing certificate: $apk"
+          ./gradlew assembleDebug "${args[@]}"
 
-      - name: Upload signed release APK
+      - name: Save native core cache
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: app/src/main/jniLibs
+          key: dumber-native-${{ runner.os }}-${{ steps.native-key.outputs.key }}
+
+      - name: Upload native core artifact
         uses: actions/upload-artifact@v4
         with:
-          name: com.dpadsms_release.apk
-          path: app/build/outputs/apk/release/app-release.apk
+          name: dumber-native-${{ steps.native-key.outputs.key }}
+          path: |
+            app/src/main/jniLibs/arm64-v8a/libdumber_chat_core.so
+            app/src/main/jniLibs/armeabi-v7a/libdumber_chat_core.so
+            app/src/main/jniLibs/x86/libdumber_chat_core.so
+            app/src/main/jniLibs/x86_64/libdumber_chat_core.so
           if-no-files-found: error
+          retention-days: 7
 
-      - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ inputs.release_tag || github.ref_name }}
-          generate_release_notes: true
-          files: app/build/outputs/apk/release/app-release.apk
+      - name: Lint (baseline enforced)
+        run: ./gradlew lintDebug -PdumberCorePrebuilt=true
+
+      - name: Unit smoke tests (SMS/MMS/scheduled)
+        run: ./gradlew testDebugUnitTest -PdumberCorePrebuilt=true
+
+      - name: Verify Room migrations (schema + migration test compile)
+        run: ./gradlew :app:assembleDebugAndroidTest -PdumberCorePrebuilt=true
 
   experimental-release:
-    runs-on: ubuntu-latest
     needs: pr-quality-gates
     if: >-
       (github.event_name == 'push' && github.ref == 'refs/heads/master') ||
       (github.event_name == 'workflow_dispatch' && inputs.experimental_build == true)
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     env:
-      DUMBER_RUST_TOOLCHAIN: "1.96.0"
       RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
       RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
       RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref }}
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -173,11 +185,8 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Rust for Android
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.96.0
-          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
@@ -186,6 +195,35 @@ jobs:
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
+
+      - name: Download native core artifact
+        id: native-artifact
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: dumber-native-${{ needs.pr-quality-gates.outputs.native_key }}
+          path: app/src/main/jniLibs
+
+      - name: Configure native core build
+        run: |
+          if [[ "${{ steps.native-artifact.outcome }}" == "success" ]]; then
+            echo "DUMBER_CORE_PREBUILT=true" >> "$GITHUB_ENV"
+          else
+            echo "DUMBER_CORE_PREBUILT=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Set up Rust for fallback native build
+        if: steps.native-artifact.outcome != 'success'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.96.0
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - name: Cache Rust fallback build
+        if: steps.native-artifact.outcome != 'success'
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: vendor/dumber-chat-core -> target
 
       - name: Set experimental version code
         run: echo "EXPERIMENTAL_VERSION_CODE=$((10516000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
@@ -195,7 +233,12 @@ jobs:
         shell: bash
 
       - name: Build signed experimental APK
-        run: ./gradlew assembleExperimental
+        run: |
+          args=()
+          if [[ "$DUMBER_CORE_PREBUILT" == "true" ]]; then
+            args+=("-PdumberCorePrebuilt=true")
+          fi
+          ./gradlew assembleExperimental "${args[@]}"
         env:
           RELEASE_STORE_FILE: "${{ runner.temp }}/release.jks"
 
@@ -208,7 +251,7 @@ jobs:
           apk="app-experimental-${EXPERIMENTAL_VERSION_CODE}.apk"
           actual="$(keytool -printcert -jarfile "$apk" | awk -F'SHA256: ' '/SHA256:/{print $2; exit}' | tr -d ':' | tr '[:lower:]' '[:upper:]')"
           if [[ "$actual" != "$expected" ]]; then
-            echo "Unexpected signing certificate on $apk: $actual"
+            echo "Unexpected signing certificate on $apk"
             exit 1
           fi
           echo "Verified trusted signing certificate: $apk"

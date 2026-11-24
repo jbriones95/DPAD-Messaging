@@ -182,5 +182,6 @@ val buildDumberCore by tasks.registering(Exec::class) {
     inputs.file(rootProject.file("scripts/build-dumber-core.sh"))
     inputs.property("targets", providers.gradleProperty("dumberRustTargets").orElse("aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android"))
     outputs.files(listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64").map { file("src/main/jniLibs/$it/libdumber_chat_core.so") })
+    onlyIf { !project.hasProperty("dumberCorePrebuilt") }
 }
 tasks.named("preBuild") { dependsOn(buildDumberCore) }

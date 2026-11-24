@@ -1,0 +1,168 @@
+name: Android Release
+
+on:
+  push:
+    tags: [ "v*" ]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing v* tag to build and publish"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: android-release-${{ inputs.release_tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  DUMBER_RUST_TOOLCHAIN: "1.96.0"
+  DUMBER_RUST_TARGETS: "aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android"
+  RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+  RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+  RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release tag and commit
+        id: release
+        run: |
+          tag="${{ inputs.release_tag || github.ref_name }}"
+          if [[ ! "$tag" =~ ^v ]]; then
+            echo "Release tag must start with v: $tag" >&2
+            exit 1
+          fi
+          sha="$(git rev-parse "$tag^{commit}")"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for successful branch CI
+        id: ci
+        env:
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for attempt in $(seq 1 240); do
+            response="$(gh api -H "Accept: application/vnd.github+json" \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/android-ci.yml/runs?head_sha=$RELEASE_SHA&per_page=100")"
+            success_ids="$(jq -r '[.workflow_runs[] | select(.conclusion == "success")] | sort_by(.run_number) | reverse | .[].id' <<< "$response")"
+            for run_id in $success_ids; do
+              jobs="$(gh api -H "Accept: application/vnd.github+json" "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs")"
+              gate="$(jq '[.jobs[] | select(.name == "pr-quality-gates" and .conclusion == "success")] | length' <<< "$jobs")"
+              if [[ "$gate" != "0" ]]; then
+                echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+                echo "Using successful CI run $run_id for $RELEASE_SHA"
+                exit 0
+              fi
+            done
+            active="$(jq '[.workflow_runs[] | select(.status == "queued" or .status == "in_progress")] | length' <<< "$response")"
+            if [[ "$active" == "0" ]]; then
+              echo "No successful Android CI run exists for $RELEASE_SHA" >&2
+              exit 1
+            fi
+            sleep 15
+          done
+          echo "Timed out waiting for Android CI for $RELEASE_SHA" >&2
+          exit 1
+
+      - name: Compute native artifact key
+        id: native-key
+        run: echo "key=$(bash scripts/dumber-native-key.sh)" >> "$GITHUB_OUTPUT"
+
+      - name: Download native core artifact
+        id: native-artifact
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: dumber-native-${{ steps.native-key.outputs.key }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.ci.outputs.run_id }}
+          github-token: ${{ github.token }}
+          path: app/src/main/jniLibs
+
+      - name: Configure native core build
+        run: |
+          if [[ "${{ steps.native-artifact.outcome }}" == "success" ]]; then
+            echo "DUMBER_CORE_PREBUILT=true" >> "$GITHUB_ENV"
+          else
+            echo "DUMBER_CORE_PREBUILT=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools ndk;30.0.16248370'
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Set up Rust for fallback native build
+        if: steps.native-artifact.outcome != 'success'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.96.0
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - name: Cache Rust fallback build
+        if: steps.native-artifact.outcome != 'success'
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: vendor/dumber-chat-core -> target
+
+      - name: Decode release keystore
+        run: echo "${{ secrets.RELEASE_STORE_FILE }}" | base64 --decode > "$RUNNER_TEMP/release.jks"
+        shell: bash
+
+      - name: Build signed release APK
+        run: |
+          args=()
+          if [[ "$DUMBER_CORE_PREBUILT" == "true" ]]; then
+            args+=("-PdumberCorePrebuilt=true")
+          fi
+          ./gradlew assembleRelease "${args[@]}"
+        env:
+          RELEASE_STORE_FILE: "${{ runner.temp }}/release.jks"
+
+      - name: Verify trusted signing certificate
+        run: |
+          expected="C7EEB6B0A8089EAD8FF786AF45FFC545F4C4F7BE38DD62655E42843EEC91ED6E"
+          apk="app/build/outputs/apk/release/app-release.apk"
+          actual="$(keytool -printcert -jarfile "$apk" | awk -F'SHA256: ' '/SHA256:/{print $2; exit}' | tr -d ':' | tr '[:lower:]' '[:upper:]')"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "Unexpected signing certificate on $apk"
+            exit 1
+          fi
+          echo "Verified trusted signing certificate: $apk"
+
+      - name: Upload signed release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: com.dpadsms_release.apk
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release.outputs.tag }}
+          generate_release_notes: true
+          files: app/build/outputs/apk/release/app-release.apk
