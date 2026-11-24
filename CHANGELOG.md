@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.17
+
+- Inbox loading is faster, contact names are preserved when returning from a conversation, and long message histories load in pages.
+- New messages now refresh reliably while a conversation is open, including on Kyocera devices.
+- Background SMS/MMS reception is more reliable when the phone is closed.
+- Search now has a focusable OK button for D-pad and keypad users.
+- Message focus, thread navigation, and light/dark text contrast are improved. Pressing Up from the message box reaches the toolbar directly.
+
 ## 0.5.16
 
 - Pressing the center/OK key in the message box now sends the message when there is text or an attachment, instead of inserting a new line. While a T9/TT9 keyboard is composing or selecting a word, the center key still belongs to the keyboard. Enter still inserts a newline.
