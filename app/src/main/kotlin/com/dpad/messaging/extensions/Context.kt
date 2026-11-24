@@ -313,6 +313,7 @@ suspend fun Context.getMessagesForThread(
                 "${Telephony.Sms.THREAD_ID} = ?",
                 arrayOf(threadId.toString()),
                 "${Telephony.Sms.DATE} DESC",
+                null,
                 extras
             )
         } catch (_: Exception) {
