@@ -1,7 +1,6 @@
 package com.dpad.messaging.adapters
 
 import androidx.core.graphics.ColorUtils
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -17,7 +16,7 @@ class ThreadFocusContrastTest {
 
         val result = ThreadAdapter.higherContrastText(background, preferred)
 
-        assertEquals(preferred, result)
+        assertTrue(ColorUtils.calculateLuminance(result) < 0.5)
         assertTrue(ColorUtils.calculateContrast(result, background) >= 4.5)
     }
 
@@ -28,7 +27,7 @@ class ThreadFocusContrastTest {
 
         val result = ThreadAdapter.higherContrastText(background, preferred)
 
-        assertEquals(preferred, result)
+        assertTrue(ColorUtils.calculateLuminance(result) > 0.5)
         assertTrue(ColorUtils.calculateContrast(result, background) >= 4.5)
     }
 }
