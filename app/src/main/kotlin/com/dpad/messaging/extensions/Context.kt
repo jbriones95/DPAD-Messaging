@@ -302,28 +302,30 @@ suspend fun Context.getMessagesForThread(
     )
 
     try {
-        val extras = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || cappedLimit == Int.MAX_VALUE) null
+        val selection = "${Telephony.Sms.THREAD_ID} = ?"
+        val selectionArgs = arrayOf(threadId.toString())
+        val sortOrder = "${Telephony.Sms.DATE} DESC"
+        val queryArgs = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || cappedLimit == Int.MAX_VALUE) null
             else android.os.Bundle().apply {
+                putString(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION, selection)
+                putStringArray(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, selectionArgs)
+                putString(android.content.ContentResolver.QUERY_ARG_SQL_SORT_ORDER, sortOrder)
                 putInt(android.content.ContentResolver.QUERY_ARG_LIMIT, cappedLimit + cappedOffset)
             }
         val smsCursor = try {
-            contentResolver.query(
-                smsUri,
-                smsProjection,
-                "${Telephony.Sms.THREAD_ID} = ?",
-                arrayOf(threadId.toString()),
-                "${Telephony.Sms.DATE} DESC",
-                null,
-                extras
-            )
+            if (queryArgs != null) {
+                contentResolver.query(smsUri, smsProjection, queryArgs, null)
+            } else {
+                contentResolver.query(smsUri, smsProjection, selection, selectionArgs, sortOrder)
+            }
         } catch (_: Exception) {
             // Some OEM providers reject query arguments or optional columns.
             contentResolver.query(
                 smsUri,
                 smsFallbackProjection,
-                "${Telephony.Sms.THREAD_ID} = ?",
-                arrayOf(threadId.toString()),
-                "${Telephony.Sms.DATE} DESC"
+                selection,
+                selectionArgs,
+                sortOrder
             )
         }
 
