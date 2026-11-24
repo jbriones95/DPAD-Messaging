@@ -2,11 +2,12 @@
 
 ## 0.5.17
 
-- Inbox loading is faster, contact names are preserved when returning from a conversation, and long message histories load in pages.
-- New messages now refresh reliably while a conversation is open, including on Kyocera devices.
-- Background SMS/MMS reception is more reliable when the phone is closed.
-- Search now has a focusable OK button for D-pad and keypad users.
-- Message focus, thread navigation, and light/dark text contrast are improved. Pressing Up from the message box reaches the toolbar directly.
+- The inbox opens faster and keeps showing contact names when you return from a chat.
+- Very long chats load faster.
+- New messages now appear right away in an open chat, including on Kyocera phones.
+- Text and picture messages are more likely to arrive while the phone is closed.
+- Search now has an OK button you can select with the D-pad.
+- The selected message is easier to see, text is easier to read in light and dark themes, and pressing Up from the message box goes straight to the top buttons.
 
 ## 0.5.16
 

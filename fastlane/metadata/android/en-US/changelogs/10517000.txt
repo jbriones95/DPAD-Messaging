@@ -1,1 +1,1 @@
-Faster inbox and long-thread loading, preserved contact names, reliable live message refresh, improved background SMS/MMS reception, a D-pad-friendly search OK button, and better message focus and theme contrast.
+The inbox and long chats open faster, contact names stay visible, and new messages appear right away in an open chat. Text and picture messages are more likely to arrive while the phone is closed. Search has an OK button, and the selected message and text are easier to see in light and dark themes.
