@@ -108,12 +108,11 @@ public abstract class MmsReceivedReceiver extends BroadcastReceiver {
 
         final PendingResult pendingResult = goAsync();
         new Thread(() -> {
-            try {
-                FileInputStream reader = null;
-                Uri messageUri = null;
-                String errorMessage = null;
+            FileInputStream reader = null;
+            Uri messageUri = null;
+            String errorMessage = null;
 
-                try {
+            try {
                 File mDownloadFile = new File(path);
                 final int nBytes = (int) mDownloadFile.length();
                 reader = new FileInputStream(mDownloadFile);
@@ -139,6 +138,9 @@ public abstract class MmsReceivedReceiver extends BroadcastReceiver {
                 List<CommonAsyncTask> tasks = getNotificationTask(context, intent, response, subscriptionId);
                 messageUri = DownloadRequest.persist(context, response, mmsConfig,
                         locationUrl, transactionId, subscriptionId, null);
+                if (messageUri == null) {
+                    errorMessage = "MMS received, persistence failed";
+                }
 
                 Log.v(TAG, "response saved successfully");
                 Log.v(TAG, "response length: " + response.length);
