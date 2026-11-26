@@ -226,7 +226,7 @@ jobs:
           workspaces: vendor/dumber-chat-core -> target
 
       - name: Set experimental version code
-        run: echo "EXPERIMENTAL_VERSION_CODE=$((10517000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+        run: echo "EXPERIMENTAL_VERSION_CODE=$((10518000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
 
       - name: Decode release keystore
         run: echo "${{ secrets.RELEASE_STORE_FILE }}" | base64 --decode > "$RUNNER_TEMP/release.jks"
