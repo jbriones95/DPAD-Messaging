@@ -165,7 +165,7 @@ class MmsReceiveWorker(
 
     companion object {
         private const val TAG = "DPAD_MSG"
-        private const val FOREGROUND_NOTIFICATION_ID = 3_000_000_001
+        private const val FOREGROUND_NOTIFICATION_ID = 2_000_000_001
         private const val KEY_MESSAGE_ID = "message_id"
         private const val MAX_ATTEMPTS = 3
         private const val FALLBACK_WINDOW_MS = 180_000L

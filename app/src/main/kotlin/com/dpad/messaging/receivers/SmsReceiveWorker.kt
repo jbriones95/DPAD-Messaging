@@ -60,7 +60,7 @@ class SmsReceiveWorker(
     companion object {
         private const val TAG = "DPAD_MSG"
         private const val MAX_ATTEMPTS = 5
-        private const val FOREGROUND_NOTIFICATION_ID = 3_000_000_001
+        private const val FOREGROUND_NOTIFICATION_ID = 2_000_000_001
         private const val KEY_ADDRESS = "address"
         private const val KEY_BODY = "body"
         private const val KEY_TIMESTAMP = "timestamp"
