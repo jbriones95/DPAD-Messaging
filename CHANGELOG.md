@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.17.1
+
+- Fixes a crash and lost messages when receiving texts on older Kyocera phones.
+- Makes receiving texts and picture messages more reliable.
+- Adds a safe fallback if Android cannot queue message processing in the background.
+
 ## 0.5.17
 
 - The inbox opens faster and keeps showing contact names when you return from a chat.

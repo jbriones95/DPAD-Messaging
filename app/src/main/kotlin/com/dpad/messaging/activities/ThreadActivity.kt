@@ -24,6 +24,7 @@ import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.provider.Telephony
 import android.speech.RecognizerIntent
+import android.telephony.SmsManager
 import android.telephony.SubscriptionManager
 import android.text.Editable
 import android.text.TextWatcher
@@ -2542,7 +2543,11 @@ class ThreadActivity : BaseActivity() {
 
     private fun getDefaultSmsSubscriptionId(): Int {
         return try {
-            SubscriptionManager.getDefaultSmsSubscriptionId()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                SubscriptionManager.getDefaultSmsSubscriptionId()
+            } else {
+                SmsManager.getDefaultSmsSubscriptionId()
+            }
         } catch (e: Exception) {
             if (BuildConfig.DEBUG) Log.w("DPAD_MSG", "Failed to get default SMS subscription ID", e)
             SubscriptionManager.INVALID_SUBSCRIPTION_ID

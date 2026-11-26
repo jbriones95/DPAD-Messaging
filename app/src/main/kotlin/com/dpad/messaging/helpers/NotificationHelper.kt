@@ -40,6 +40,17 @@ object NotificationHelper {
         return FAILURE_NOTIFICATION_OFFSET + (mixed.toInt() and 0x3FFFFFFF)
     }
 
+    fun receivingNotification(context: Context): Notification =
+        NotificationCompat.Builder(context, App.CHANNEL_RECEIVE_SERVICE)
+            .setSmallIcon(R.drawable.ic_new_message)
+            .setContentTitle(context.getString(R.string.app_name))
+            .setContentText(context.getString(R.string.receiving_message))
+            .setCategory(Notification.CATEGORY_MESSAGE)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .build()
+
     fun showIncomingNotification(
         context: Context,
         threadId: Long,

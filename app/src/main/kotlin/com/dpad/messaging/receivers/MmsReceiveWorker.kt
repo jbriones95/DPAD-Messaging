@@ -1,10 +1,13 @@
 package com.dpad.messaging.receivers
 
 import android.content.Context
+import android.content.pm.ServiceInfo
 import android.net.Uri
+import android.os.Build
 import androidx.core.net.toUri
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
+import androidx.work.ForegroundInfo
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
@@ -30,6 +33,19 @@ class MmsReceiveWorker(
     appContext: Context,
     params: WorkerParameters
 ) : CoroutineWorker(appContext, params) {
+
+    override suspend fun getForegroundInfo(): ForegroundInfo {
+        val notification = NotificationHelper.receivingNotification(applicationContext)
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(
+                FOREGROUND_NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_REMOTE_MESSAGING
+            )
+        } else {
+            ForegroundInfo(FOREGROUND_NOTIFICATION_ID, notification)
+        }
+    }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val requestedId = inputData.getLong(KEY_MESSAGE_ID, -1L)
@@ -149,6 +165,7 @@ class MmsReceiveWorker(
 
     companion object {
         private const val TAG = "DPAD_MSG"
+        private const val FOREGROUND_NOTIFICATION_ID = 3_000_000_001
         private const val KEY_MESSAGE_ID = "message_id"
         private const val MAX_ATTEMPTS = 3
         private const val FALLBACK_WINDOW_MS = 180_000L

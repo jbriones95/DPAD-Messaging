@@ -1,0 +1,1 @@
+Fixes a crash and lost messages on older Kyocera phones. Receiving texts and picture messages is now more reliable, with a safe fallback when Android cannot queue background message processing.

@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.telephony.SubscriptionManager
+import android.telephony.SmsManager
 import android.telephony.TelephonyManager
 import androidx.core.content.ContextCompat
 
@@ -48,7 +49,13 @@ object DumberSubscriptions {
         }.getOrNull()
     }
     fun selected(context: Context, subscription: Int): Sim? {
-        val id = if (subscription >= 0) subscription else SubscriptionManager.getDefaultSmsSubscriptionId()
+        val id = if (subscription >= 0) subscription else runCatching {
+            if (Build.VERSION.SDK_INT >= 24) {
+                SubscriptionManager.getDefaultSmsSubscriptionId()
+            } else {
+                SmsManager.getDefaultSmsSubscriptionId()
+            }
+        }.getOrNull()
         return active(context).singleOrNull { it.id == id }
     }
     fun receivedSubscription(intent: android.content.Intent): Int = intent.getIntExtra(

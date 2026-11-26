@@ -20,8 +20,8 @@ android {
         applicationId = "com.dpadsms"
         minSdk = 23
         targetSdk = 34
-        versionCode = getSecret("EXPERIMENTAL_VERSION_CODE")?.toIntOrNull() ?: 10517000
-        versionName = "0.5.17"
+        versionCode = getSecret("EXPERIMENTAL_VERSION_CODE")?.toIntOrNull() ?: 10517500
+        versionName = "0.5.17.1"
         // Creation and reception use the current typed group API.
         buildConfigField("boolean", "DUMBER_GROUP_CREATION", providers.gradleProperty("dumberGroupCreation").orElse("true").get())
         buildConfigField("String", "UPDATE_CHANNEL", "\"production\"")
@@ -166,6 +166,7 @@ dependencies {
     // Test
     testImplementation("junit:junit:4.13.2")
     testImplementation("androidx.test:core:1.5.0")
+    testImplementation("androidx.work:work-testing:2.9.0")
     testImplementation("org.robolectric:robolectric:4.11.1")
     androidTestImplementation("androidx.test:core:1.5.0")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")

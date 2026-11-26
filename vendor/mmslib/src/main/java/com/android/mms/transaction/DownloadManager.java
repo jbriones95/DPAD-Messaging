@@ -19,6 +19,7 @@ import com.klinker.android.send_message.SmsManagerFactory;
 
 import java.io.File;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -28,7 +29,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class DownloadManager {
     private static final String TAG = "DownloadManager";
     private static DownloadManager ourInstance = new DownloadManager();
-    private static final ConcurrentHashMap<String, Object> mMap = new ConcurrentHashMap<>();
+    private static final Set<String> activeDownloads = ConcurrentHashMap.newKeySet();
 
     public static DownloadManager getInstance() {
         return ourInstance;
@@ -41,13 +42,12 @@ public class DownloadManager {
     public static final String ACTION_MMS_DOWNLOADED = "com.dpad.messaging.action.MMS_DOWNLOADED";
 
     public void downloadMultimediaMessage(final Context context, final String location, final String transactionId, Uri uri, boolean byPush, int subscriptionId) {
-        if (location == null || mMap.get(location) != null) {
+        if (location == null || !activeDownloads.add(location)) {
             return;
         }
 
         // Keep only duplicate-tracking state in memory. The completion callback
         // targets a manifest receiver so process death cannot lose it.
-        mMap.put(location, null);
 
         Log.v(TAG, "receiving with system method");
         final String fileName = "download." + Math.abs(new Random().nextLong()) + ".dat";
@@ -59,8 +59,7 @@ public class DownloadManager {
                 .build();
 
         Intent download = new Intent(ACTION_MMS_DOWNLOADED)
-                .setPackage(context.getPackageName())
-                .setClass(context, com.klinker.android.send_message.MmsReceivedReceiver.class);
+                .setPackage(context.getPackageName());
         download.putExtra(MmsReceivedReceiver.EXTRA_FILE_PATH, mDownloadFile.getPath());
         download.putExtra(MmsReceivedReceiver.EXTRA_LOCATION_URL, location);
         download.putExtra(MmsReceivedReceiver.EXTRA_TRANSACTION_ID, transactionId);
@@ -86,8 +85,13 @@ public class DownloadManager {
         }
         MmsRequestOverrides.apply(context, subscriptionId, configOverrides);
 
-        grantUriPermission(context, contentUri);
-        smsManager.downloadMultimediaMessage(context, location, contentUri, configOverrides, pendingIntent);
+        try {
+            grantUriPermission(context, contentUri);
+            smsManager.downloadMultimediaMessage(context, location, contentUri, configOverrides, pendingIntent);
+        } catch (RuntimeException e) {
+            activeDownloads.remove(location);
+            throw e;
+        }
     }
 
     private void grantUriPermission(Context context, Uri contentUri) {
@@ -98,7 +102,7 @@ public class DownloadManager {
 
     public static void finishDownload(String location) {
         if (location != null) {
-            mMap.remove(location);
+            activeDownloads.remove(location);
         }
     }
 }

@@ -110,6 +110,17 @@ class App : Application() {
                 description = "Durable app-local backup and restore progress"
             }
             manager.createNotificationChannel(backupChannel)
+
+            val receiveChannel = NotificationChannel(
+                CHANNEL_RECEIVE_SERVICE,
+                "Message processing",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Shows while an incoming message is being saved"
+                enableVibration(false)
+                enableLights(false)
+            }
+            manager.createNotificationChannel(receiveChannel)
         }
     }
 
@@ -148,6 +159,7 @@ class App : Application() {
         }
         const val CHANNEL_SEND_FAILURE = "dpad_messages_send_failure"
         const val CHANNEL_BACKUP = "dpad_backup_restore"
+        const val CHANNEL_RECEIVE_SERVICE = "dpad_messages_receive_service"
 
         @Volatile
         private var instance: App? = null

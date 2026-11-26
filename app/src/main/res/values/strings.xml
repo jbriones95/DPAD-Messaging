@@ -206,6 +206,7 @@
     <string name="about">About</string>
     <string name="version">Version</string>
     <string name="new_message">New message</string>
+    <string name="receiving_message">Receiving message…</string>
     <string name="mms_download_pending_title">MMS waiting to download</string>
     <string name="mms_download_pending_text">Tap Download to get this message.</string>
     <string name="download_mms">Download</string>
