@@ -14,6 +14,15 @@ Binaries: https://github.com/jbriones95/DPAD-Messaging/releases/download/v%v/app
 AllowedAPKSigningKeys: c7eeb6b0a8089ead8ff786af45ffc545f4c4f7be38dd62655e42843eec91ed6e
 
 Builds:
+  - versionName: 0.5.17.1
+    versionCode: 10518000
+    commit: 891161f161ce02ae0308fd3810d6d480cea10dfb
+    subdir: app
+    ndk: 30.0.16248370
+    prebuild:
+      - rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+    gradle:
+      - yes
   - versionName: 0.5.17
     versionCode: 10517000
     commit: cdef8419368d5db3d255bd813b57f3d158e66d58
@@ -256,6 +265,6 @@ Builds:
       - cp -r $$mmslib$$ ../vendor/mmslib
 
 AutoUpdateMode: Version
-UpdateCheckMode: Tags ^v\d+\.\d+\.\d+$
-CurrentVersion: 0.5.17
-CurrentVersionCode: 10517000
+UpdateCheckMode: Tags ^v\d+\.\d+\.\d+(\.\d+)?$
+CurrentVersion: 0.5.17.1
+CurrentVersionCode: 10518000
