@@ -353,4 +353,7 @@
     <string name="dumber_status_sim_unconnected">SMS · SIM not connected</string>
     <string name="dumber_recipient_unavailable">Recipient no longer available on dumber.chat</string>
     <string name="dumber_recipient_unavailable_sms">Send this message as regular SMS?</string>
+    <string name="dumber_account_alerts">dumber.chat account alerts</string>
+    <string name="dumber_session_ended">dumber.chat disconnected</string>
+    <string name="dumber_session_ended_detail">Your encrypted messaging session ended. Verify your phone number to reconnect.</string>
 </resources>

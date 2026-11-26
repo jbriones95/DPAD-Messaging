@@ -66,6 +66,8 @@ class DumberSyncService: Service() {
         private const val CHANNEL = "dumber_connection"
         fun ensureStarted(context: Context) {
             DumberDisconnect.enqueue(context)
+            // Run before the enabled-account guard: older versions may have revoked every account.
+            SessionNotifications.refresh(context)
             if(!DumberAccount.enabled(context) || !DumberCore.available()) return
             runCatching { ContextCompat.startForegroundService(context,Intent(context,DumberSyncService::class.java)) }
         }

@@ -36,6 +36,7 @@ class App : Application() {
         ThemeManager.applyThemeMode(Prefs.get().appThemeMode)
         refreshNotificationChannels()
         AppCoroutineScopes.io.launch {
+            com.dpad.messaging.dumber.SessionNotifications.refresh(this@App)
             RescheduleAlarmsReceiver.reschedulePending(this@App)
             ScheduledMessageIntegrityChecker.run(this@App)
             // Ensure legacy numeric keywords are migrated to blocked_numbers table.

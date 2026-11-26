@@ -5,6 +5,7 @@
 - Fixes a crash and lost messages when receiving texts on older Kyocera phones.
 - Makes receiving texts and picture messages more reliable.
 - Adds a safe fallback if Android cannot queue message processing in the background.
+- Moves dumber.chat to its new server. Existing encrypted messaging users need to verify their phone number again to reconnect.
 
 ## 0.5.17
 

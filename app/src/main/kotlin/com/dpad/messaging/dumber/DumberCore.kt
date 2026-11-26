@@ -9,7 +9,7 @@ import java.io.File
 import java.util.Locale
 
 object DumberCore {
-    const val SERVICE = "https://nokings.chat"
+    const val SERVICE = "https://dumber.chat"
     fun available(): Boolean = ChatClient.isAvailable()
     internal var factory: (ChatConfig) -> ChatApi = { ChatClient(it) }
     internal fun config(context: Context, account: String? = null): ChatConfig = ChatConfig(SERVICE,

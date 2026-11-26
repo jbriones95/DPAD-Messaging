@@ -354,4 +354,7 @@
     <string name="dumber_status_sim_unconnected">SMS · SIM no conectada</string>
     <string name="dumber_recipient_unavailable">El destinatario ya no está disponible en dumber.chat</string>
     <string name="dumber_recipient_unavailable_sms">¿Enviar este mensaje como SMS normal?</string>
+    <string name="dumber_account_alerts">Alertas de la cuenta de dumber.chat</string>
+    <string name="dumber_session_ended">dumber.chat desconectado</string>
+    <string name="dumber_session_ended_detail">Tu sesión de mensajería cifrada finalizó. Verifica tu número de teléfono para volver a conectarte.</string>
 </resources>

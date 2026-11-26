@@ -110,24 +110,50 @@ object DumberAccount {
                 existing.remove("sim_choice")
                 existing.remove("logged_out")
                 existing.remove("session_revoked")
+                existing.remove("revocation_notified")
+                existing.remove("revocation_resolved")
+            }
+            // A fresh server issues a different ID. Retain the old record/history, but
+            // never resurrect its warning after this replacement is later signed out.
+            accounts.keys().asSequence().filter { it != account }.forEach { id ->
+                accounts.getJSONObject(id).takeIf { it.optString("phone") == phone }
+                    ?.put("revocation_resolved", true)
             }
             val bindings = root.optJSONObject("sim_bindings") ?: JSONObject().also { root.put("sim_bindings", it) }
             bindings.keys().asSequence().toList().filter { bindings.getJSONObject(it).optString("account") == account }.forEach { bindings.remove(it) }
             bindings.put(sim.id.toString(), JSONObject().put("account", account).put("card_id", sim.cardId).put("label", sim.label).put("reported_number", sim.number))
             root.remove("verification"); root.remove("error"); accepted = true
         }
-        if (accepted) SimRemovalUi.refresh(context)
+        if (accepted) {
+            SimRemovalUi.refresh(context)
+            SessionNotifications.refresh(context)
+        }
         return accepted
     }
     /** Ignore stale in-flight responses from a previous main session. */
     fun revoked(context: Context, account: String, token: String) {
         updateAccount(context, account) { state ->
-            if (storedSession(state)?.credentials == token) {
+            if (state.optBoolean("enabled", true) && storedSession(state)?.credentials == token) {
                 state.put("enabled", false).put("session_revoked", true)
+                state.remove("revocation_notified")
                 state.remove("sim_choice")
             }
         }
         SimRemovalUi.refresh(context)
+        SessionNotifications.refresh(context)
+    }
+    /** Revoked accounts still needing reconnection, including records from older releases. */
+    internal fun revokedAccounts(root: JSONObject): Map<String, JSONObject> {
+        val accounts = root.optJSONObject("accounts") ?: return emptyMap()
+        val entries = accounts.keys().asSequence().associateWith { accounts.getJSONObject(it) }
+        val connectedPhones = entries.values.filter { it.has("session") && it.optBoolean("enabled", true) }
+            .map { it.optString("phone") }.filter { it.isNotBlank() }.toSet()
+        return entries.filterValues { state ->
+            state.has("session") && !state.optBoolean("enabled", true) &&
+                state.optBoolean("session_revoked") && !state.optBoolean("logged_out") &&
+                !state.optBoolean("revocation_resolved") &&
+                state.optString("phone") !in connectedPhones
+        }
     }
     /** Revoke only this phone's session, retaining account identity and local history. */
     fun logout(context: Context, account: String): Boolean {

@@ -65,6 +65,9 @@ class DumberConnectActivity: BaseActivity() {
             button("Retry") { draw() }
             return
         }
+        if (DumberAccount.revokedAccounts(DumberAccount.read(this)).isNotEmpty()) {
+            status.text = getString(R.string.dumber_session_ended_detail)
+        }
         val missing = mutableListOf<String>()
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) missing.add(Manifest.permission.READ_PHONE_STATE)
         if (Build.VERSION.SDK_INT >= 26 && ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_NUMBERS) != PackageManager.PERMISSION_GRANTED) missing.add(Manifest.permission.READ_PHONE_NUMBERS)

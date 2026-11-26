@@ -320,6 +320,110 @@ class DumberStateTest {
         assertFalse(DumberAccount.enabled(context, self))
         assertTrue(DumberAccount.state(context, self).optBoolean("session_revoked"))
     }
+    private fun sessionNotice(): android.app.Notification? = org.robolectric.Shadows.shadowOf(
+        context.getSystemService(android.app.NotificationManager::class.java)
+    ).getNotification(SessionNotifications.TAG, SessionNotifications.ID)
+
+    @Test fun revokedSessionNotifiesOnceAndOpensReconnectWithoutExposingThePhone() {
+        val store = DumberAccount.storeName(context, self)
+        DumberAccount.revoked(context, self, "test")
+        val notice = requireNotNull(sessionNotice())
+        assertEquals("dumber.chat disconnected", notice.extras.getString(android.app.Notification.EXTRA_TITLE))
+        assertFalse(notice.extras.toString().contains(ownPhone))
+        assertEquals(DumberConnectActivity::class.java.name,
+            org.robolectric.Shadows.shadowOf(notice.contentIntent).savedIntent.component!!.className)
+        assertFalse(DumberAccount.enabled(context, self))
+        assertEquals(store, DumberAccount.storeName(context, self))
+        assertTrue(DumberAccount.state(context, self).getBoolean("revocation_notified"))
+        context.getSystemService(android.app.NotificationManager::class.java).cancel(SessionNotifications.TAG, SessionNotifications.ID)
+        DumberAccount.revoked(context, self, "test")
+        SessionNotifications.refresh(context)
+        assertNull(sessionNotice())
+    }
+
+    @Test fun alreadyRevokedAccountNotifiesWithoutAnyEnabledAccounts() {
+        DumberAccount.updateAccount(context, self) { it.put("enabled", false).put("session_revoked", true) }
+        assertFalse(DumberAccount.enabled(context))
+        // Simulate startup after an older client saved the revocation.
+        SessionNotifications.refresh(context)
+        assertNotNull(sessionNotice())
+    }
+
+    @Test fun reconnectOnNewServerClearsOldNoticeAndPreservesOldHistoryIdentity() {
+        DumberAccount.revoked(context, self, "test")
+        assertNotNull(sessionNotice())
+        link("new-server-account", ownPhone, 1)
+        assertNull(sessionNotice())
+        assertTrue(DumberAccount.ids(context).contains(self))
+        assertTrue(DumberAccount.enabled(context, "new-server-account"))
+        SessionNotifications.refresh(context)
+        assertNull(sessionNotice())
+    }
+
+    @Test fun signingOutAfterNewServerReconnectionDoesNotResurrectOldRevocation() {
+        DumberAccount.revoked(context, self, "test")
+        link("new-server-account", ownPhone, 1)
+        assertTrue(DumberAccount.logout(context, "new-server-account"))
+        SessionNotifications.refresh(context)
+        assertNull(sessionNotice())
+        assertTrue(DumberAccount.revokedAccounts(DumberAccount.read(context)).isEmpty())
+    }
+
+    @Test fun disabledNotificationsRemainPendingUntilPermissionIsRestored() {
+        val manager = org.robolectric.Shadows.shadowOf(context.getSystemService(android.app.NotificationManager::class.java))
+        manager.setNotificationsEnabled(false)
+        DumberAccount.revoked(context, self, "test")
+        assertNull(sessionNotice())
+        assertFalse(DumberAccount.state(context, self).optBoolean("revocation_notified"))
+        manager.setNotificationsEnabled(true)
+        SessionNotifications.refresh(context)
+        assertNotNull(sessionNotice())
+    }
+
+    @Test fun reconnectingOneNumberDoesNotClearAnotherNumbersNotice() {
+        val other = "other-account"
+        sims(1, 2)
+        link(other, "+15555550102", 2)
+        DumberAccount.revoked(context, self, "test")
+        DumberAccount.revoked(context, other, "test")
+        link("new-server-account", ownPhone, 1)
+        assertNotNull(sessionNotice())
+        assertEquals(setOf(other), DumberAccount.revokedAccounts(DumberAccount.read(context)).keys)
+        link(other, "+15555550102", 2)
+        assertNull(sessionNotice())
+    }
+
+    @Test fun eachNewSessionCanProduceItsOwnLogoutNotice() {
+        DumberAccount.revoked(context, self, "test")
+        assertNotNull(sessionNotice())
+        link(self, ownPhone, 1)
+        assertNull(sessionNotice())
+        assertFalse(DumberAccount.state(context, self).optBoolean("revocation_notified"))
+        DumberAccount.revoked(context, self, "test")
+        assertNotNull(sessionNotice())
+    }
+
+    @Test fun deliberateLogoutIsNotReclassifiedByALateAuthenticationFailure() {
+        assertTrue(DumberAccount.logout(context, self))
+        DumberAccount.revoked(context, self, "test")
+        assertFalse(DumberAccount.state(context, self).optBoolean("session_revoked"))
+        assertNull(sessionNotice())
+    }
+
+    @Test fun activeAndNeverConnectedAccountsDoNotShowLogoutNotices() {
+        SessionNotifications.refresh(context)
+        assertNull(sessionNotice())
+        DumberAccount.update(context) { it.remove("accounts") }
+        SessionNotifications.refresh(context)
+        assertNull(sessionNotice())
+    }
+
+    @Test fun apiEndpointUsesTheDedicatedServerEvenForASavedOldSession() {
+        val config = DumberCore.config(context, self)
+        assertEquals("https://dumber.chat", config.service)
+        assertEquals(DumberAccount.session(context, self), config.session)
+    }
+
     @Test fun manualLogoutOnlyDisablesSelectedAccountAndPreservesItsStore() {
         val other = "@other:example.test"
         sims(1, 2)
